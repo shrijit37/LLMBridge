@@ -101,9 +101,15 @@ CCS loads its configuration from `$CCS_CONFIG_DIR/config.json` falling back to `
       "enabled": true,
       "fallback": false
     }
+  },
+  "lanes": {
+    "enabled": true,
+    "proxy_base": "http://lane-egress",
+    "ports": [8001, 8002, 8003, 8004],
+    "ctl_url": "http://lane-egress:9100",
+    "token": "$LANE_TOKEN"
   }
 }
-```
 
 ### Environment Variable Expansion
 Any `api_key` or `extra_headers` value starting with `$` (e.g. `"$DEEPSEEK_API_KEY"`) is dynamically resolved from the process environment variables at request time.
@@ -121,6 +127,7 @@ Any `api_key` or `extra_headers` value starting with `$` (e.g. `"$DEEPSEEK_API_K
 | `GET` | `/health` | Health check with uptime, active provider, and provider count |
 | `GET` | `/stats` | Aggregated SQLite request, failure, and token metrics |
 | `GET` | `/api/logs` | In-memory ring buffer of recent requests and responses |
+| `GET` | `/api/lanes` | Live egress VPN lane status and health from lane-ctl |
 
 ---
 

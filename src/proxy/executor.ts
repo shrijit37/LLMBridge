@@ -30,6 +30,7 @@ import {
 } from '../transform/streaming/index.js';
 import type { CircuitBreaker } from './circuit-breaker.js';
 import type { ResolvedPoolItem } from './router.js';
+import type { LaneManager } from './lane-manager.js';
 import { canPassthrough, patchStreamUsage } from './passthrough.js';
 
 export type ClientWireFormat = 'anthropic' | 'openai_chat' | 'openai_responses';
@@ -42,6 +43,7 @@ export interface ExecuteRequestOptions {
   rawClientBody: Record<string, unknown>;
   clientHeaders: Headers;
   circuitBreaker: CircuitBreaker;
+  laneManager?: LaneManager;
   onRecordStats?: (
     providerId: string,
     providerName: string,
@@ -139,6 +141,7 @@ export async function executeProviderLoop(options: ExecuteRequestOptions): Promi
     rawClientBody,
     clientHeaders,
     circuitBreaker,
+    laneManager,
     onRecordStats,
     onLogRequest,
   } = options;
@@ -224,6 +227,7 @@ export async function executeProviderLoop(options: ExecuteRequestOptions): Promi
 
     const t0 = Date.now();
     let res: Response;
+    const lane = laneManager?.pickLane();
 
     try {
       res = await fetch(url, {
@@ -231,8 +235,12 @@ export async function executeProviderLoop(options: ExecuteRequestOptions): Promi
         headers: reqHeaders,
         body: JSON.stringify(upstreamBodyObj),
         signal: AbortSignal.timeout(300000),
-      });
+        ...(lane ? { dispatcher: lane.agent } : {}),
+      } as RequestInit);
     } catch (netErr) {
+      if (lane) {
+        laneManager?.reportOutcome(lane.port, 0, true);
+      }
       const latencyMs = Date.now() - t0;
       circuitBreaker.recordFailure(provider.id);
       consecutiveFailures++;
@@ -286,6 +294,10 @@ export async function executeProviderLoop(options: ExecuteRequestOptions): Promi
       } catch {
         // Continue with original response
       }
+    }
+
+    if (lane) {
+      laneManager?.reportOutcome(lane.port, res.status, false);
     }
 
     // Success (2xx)

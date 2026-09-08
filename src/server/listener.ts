@@ -5,6 +5,7 @@ import type { ConfigWatcher } from '../config/watcher.js';
 import type { GatewayDatabase } from '../storage/db.js';
 import type { RingBuffer } from '../storage/ring-buffer.js';
 import type { CircuitBreaker } from '../proxy/circuit-breaker.js';
+import type { LaneManager } from '../proxy/lane-manager.js';
 import { createGatewayApp } from './app.js';
 
 export interface PinnedListenerOptions {
@@ -12,6 +13,7 @@ export interface PinnedListenerOptions {
   db: GatewayDatabase;
   ringBuffer: RingBuffer<Record<string, unknown>>;
   circuitBreaker: CircuitBreaker;
+  laneManager?: LaneManager;
 }
 
 interface ActiveListener {

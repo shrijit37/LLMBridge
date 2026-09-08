@@ -28,11 +28,22 @@ export interface Provider {
   maxTokensCap?: number;
   extraHeaders: Record<string, string>;
 }
+export interface LanesConfig {
+  enabled: boolean;
+  proxyBase: string;
+  ports: number[];
+  ctlUrl: string;
+  token?: string;
+  endpointName?: string;
+  maxRotationsPerWindow?: number;
+  windowSecs?: number;
+}
 
 export interface AppConfig {
   current: string;
   listen: string;
   providers: Record<string, Provider>;
+  lanes?: LanesConfig;
   dbPath?: string;
   requestLogLimit: number;
 }
@@ -105,10 +116,22 @@ export interface RawProviderJson {
   extra_headers?: Record<string, string>;
 }
 
+export interface RawLanesConfigJson {
+  enabled?: boolean;
+  proxy_base?: string;
+  ports?: number[];
+  ctl_url?: string;
+  token?: string;
+  endpoint_name?: string;
+  max_rotations_per_window?: number;
+  window_secs?: number;
+}
+
 export interface RawAppConfigJson {
   current?: string;
   listen?: string;
   providers?: Record<string, RawProviderJson>;
+  lanes?: RawLanesConfigJson;
   db_path?: string;
   request_log_limit?: number;
 }
@@ -148,10 +171,28 @@ export function rawJsonToAppConfig(raw: RawAppConfigJson): AppConfig {
     }
   }
 
+  let lanes: LanesConfig | undefined;
+  if (raw.lanes && typeof raw.lanes === 'object') {
+    lanes = {
+      enabled: raw.lanes.enabled ?? true,
+      proxyBase: raw.lanes.proxy_base || 'http://lane-egress',
+      ports:
+        Array.isArray(raw.lanes.ports) && raw.lanes.ports.length > 0
+          ? raw.lanes.ports
+          : [8001, 8002, 8003, 8004],
+      ctlUrl: raw.lanes.ctl_url || 'http://lane-egress:9100',
+      token: raw.lanes.token,
+      endpointName: raw.lanes.endpoint_name,
+      maxRotationsPerWindow: raw.lanes.max_rotations_per_window,
+      windowSecs: raw.lanes.window_secs,
+    };
+  }
+
   return {
     current: raw.current || '',
     listen: raw.listen || DEFAULT_LISTEN,
     providers,
+    lanes,
     dbPath: raw.db_path,
     requestLogLimit: raw.request_log_limit ?? DEFAULT_REQUEST_LOG_LIMIT,
   };
@@ -187,11 +228,25 @@ export function appConfigToRawJson(config: AppConfig): RawAppConfigJson {
     };
     rawProviders[name] = rawP;
   }
+  let rawLanes: RawLanesConfigJson | undefined;
+  if (config.lanes) {
+    rawLanes = {
+      enabled: config.lanes.enabled,
+      proxy_base: config.lanes.proxyBase,
+      ports: config.lanes.ports,
+      ctl_url: config.lanes.ctlUrl,
+      token: config.lanes.token,
+      endpoint_name: config.lanes.endpointName,
+      max_rotations_per_window: config.lanes.maxRotationsPerWindow,
+      window_secs: config.lanes.windowSecs,
+    };
+  }
 
   return {
     current: config.current,
     listen: config.listen,
     providers: rawProviders,
+    lanes: rawLanes,
     db_path: config.dbPath,
     request_log_limit: config.requestLogLimit,
   };

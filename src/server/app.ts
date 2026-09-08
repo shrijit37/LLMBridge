@@ -4,6 +4,7 @@ import type { ConfigWatcher } from '../config/watcher.js';
 import type { GatewayDatabase } from '../storage/db.js';
 import type { RingBuffer } from '../storage/ring-buffer.js';
 import type { CircuitBreaker } from '../proxy/circuit-breaker.js';
+import type { LaneManager } from '../proxy/lane-manager.js';
 import { resolveProviderPool } from '../proxy/router.js';
 import { executeProviderLoop, type ClientWireFormat } from '../proxy/executor.js';
 import { anthropicToCanonicalRequest } from '../transform/anthropic/index.js';
@@ -16,6 +17,7 @@ export interface AppContext {
   ringBuffer: RingBuffer<Record<string, unknown>>;
   circuitBreaker: CircuitBreaker;
   pinnedProviderName?: string;
+  laneManager?: LaneManager;
 }
 
 export function createGatewayApp(ctx: AppContext): Hono {
@@ -71,6 +73,15 @@ export function createGatewayApp(ctx: AppContext): Hono {
     const limit = limitParam ? parseInt(limitParam, 10) : 100;
     const logs = ctx.ringBuffer.getRecent(Number.isNaN(limit) ? 100 : limit);
     return c.json({ logs });
+  });
+
+  // Live egress lane health & status
+  app.get('/api/lanes', async (c) => {
+    if (!ctx.laneManager || !ctx.laneManager.isEnabled()) {
+      return c.json({ enabled: false, message: 'Lanes are disabled' });
+    }
+    const status = await ctx.laneManager.getStatus();
+    return c.json({ enabled: true, status });
   });
 
   // Model catalog
@@ -174,6 +185,7 @@ export function createGatewayApp(ctx: AppContext): Hono {
       rawClientBody: body,
       clientHeaders,
       circuitBreaker: ctx.circuitBreaker,
+      laneManager: ctx.laneManager,
       onRecordStats: (providerId, providerName, delta) => {
         ctx.db.recordStats(providerId, providerName, canonical.model, delta);
       },

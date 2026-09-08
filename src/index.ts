@@ -7,6 +7,7 @@ import { parseListenPort, resolveDbPath } from './config/loader.js';
 import { GatewayDatabase } from './storage/db.js';
 import { RingBuffer } from './storage/ring-buffer.js';
 import { CircuitBreaker } from './proxy/circuit-breaker.js';
+import { LaneManager } from './proxy/lane-manager.js';
 import { createGatewayApp } from './server/app.js';
 import { PinnedListenerManager } from './server/listener.js';
 
@@ -16,6 +17,7 @@ export interface GatewayInstance {
   db: GatewayDatabase;
   configWatcher: ConfigWatcher;
   pinnedManager: PinnedListenerManager;
+  laneManager: LaneManager;
   port: number;
   close: () => void;
 }
@@ -34,12 +36,14 @@ export async function startGateway(options?: {
 
   const ringBuffer = new RingBuffer<Record<string, unknown>>(initialConfig.requestLogLimit);
   const circuitBreaker = new CircuitBreaker();
+  const laneManager = new LaneManager(initialConfig.lanes);
 
   const appContext = {
     configWatcher,
     db,
     ringBuffer,
     circuitBreaker,
+    laneManager,
   };
 
   const app = createGatewayApp(appContext);
@@ -62,11 +66,13 @@ export async function startGateway(options?: {
     console.log('[ccMesh Gateway] Configuration reloaded');
     pinnedManager.reconcile(newConfig);
     ringBuffer.resize(newConfig.requestLogLimit);
+    laneManager.updateConfig(newConfig.lanes);
   });
 
   const cleanup = () => {
     console.log('[ccMesh Gateway] Shutting down...');
     pinnedManager.stopAll();
+    laneManager.close();
     mainServer.close();
     configWatcher.stop();
     db.close();
@@ -84,9 +90,11 @@ export async function startGateway(options?: {
     db,
     configWatcher,
     pinnedManager,
+    laneManager,
     port: listenPort,
     close: () => {
       pinnedManager.stopAll();
+      laneManager.close();
       mainServer.close();
       configWatcher.stop();
       db.close();
