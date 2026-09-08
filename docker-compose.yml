@@ -1,0 +1,12 @@
+services:
+  ccs:
+    build: .
+    image: ccs-ts:latest
+    container_name: ccs-gateway
+    restart: unless-stopped
+    ports:
+      - "7896:7896"
+    environment:
+      - CCS_CONFIG_DIR=/app/config
+    volumes:
+      - ./config:/app/config
