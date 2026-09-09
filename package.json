@@ -28,7 +28,8 @@
   "license": "MIT",
   "dependencies": {
     "@hono/node-server": "^1.13.8",
-    "hono": "^4.6.14"
+    "hono": "^4.6.14",
+    "undici": "^8.10.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
