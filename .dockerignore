@@ -1,0 +1,14 @@
+node_modules
+dist
+dashboard/node_modules
+dashboard/dist
+.git
+ecc
+.claude
+.mcp.json
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.env
+data

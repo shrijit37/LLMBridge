@@ -14,6 +14,12 @@ COPY src ./src
 RUN pnpm build
 RUN pnpm prune --prod
 
+# Dashboard SPA (served by the gateway at /dashboard, same origin /api)
+COPY dashboard/package.json dashboard/package-lock.json ./dashboard/
+RUN cd dashboard && npm ci
+COPY dashboard ./dashboard
+RUN cd dashboard && npm run build
+
 # Production Runner Stage
 FROM node:22-alpine AS runner
 
@@ -32,6 +38,7 @@ RUN mkdir -p /app/config /app/data && chown -R node:node /app
 COPY --chown=node:node package.json ./
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/dist ./dist
+COPY --chown=node:node --from=builder /app/dashboard/dist ./dashboard/dist
 COPY --chown=node:node config ./baked-config
 COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
