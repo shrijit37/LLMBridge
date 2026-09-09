@@ -12,6 +12,7 @@ services:
       - "${CCS_DEV_PORT:-7897}:7896"
     environment:
       - NODE_ENV=development
+      - CCS_ENV=dev
       - CCS_CONFIG_DIR=/app/config
       - PORT=7896
       - LANE_TOKEN=${LANE_TOKEN:-}

@@ -32,13 +32,12 @@ RUN mkdir -p /app/config /app/data && chown -R node:node /app
 COPY --chown=node:node package.json ./
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/dist ./dist
+COPY --chown=node:node config ./baked-config
+COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 
 USER node
 
 EXPOSE 7896
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:7896/health >/dev/null || exit 1
-
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["/sbin/tini", "--", "/app/docker-entrypoint.sh"]
