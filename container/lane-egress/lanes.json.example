@@ -1,0 +1,8 @@
+{
+  "lanes": {
+    "8001": { "netns": "ns8001", "ifname": "wg8001", "gost_proxy_port": 8888 },
+    "8002": { "netns": "ns8002", "ifname": "wg8002", "gost_proxy_port": 8888 },
+    "8003": { "netns": "ns8003", "ifname": "wg8003", "gost_proxy_port": 8888 },
+    "8004": { "netns": "ns8004", "ifname": "wg8004", "gost_proxy_port": 8888 }
+  }
+}
