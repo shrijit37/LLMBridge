@@ -112,8 +112,8 @@ describe('Proxy Engine', () => {
   describe('Quota Command Runner', () => {
     it('executes command and receives stdout with env variables', async () => {
       const provider = { ...createDefaultProvider('prov-test'), baseUrl: 'https://api.test.com' };
-      const out = await runQuotaCommand('echo "QUOTA: $_PROVIDER $_BASE_URL"', provider, 'sk-secret');
-      expect(out).toBe('QUOTA: prov-test https://api.test.com');
+      const out = await runQuotaCommand('echo "QUOTA: $__PROVIDER $__BASE_URL $__API_KEY"', provider, 'sk-secret');
+      expect(out).toBe('QUOTA: prov-test https://api.test.com sk-secret');
     });
   });
 

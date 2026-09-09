@@ -25,6 +25,11 @@ export class ConfigWatcher {
     return this.currentConfig;
   }
 
+  /** The config file path being watched (resolved from the constructor). */
+  public get configPath(): string {
+    return this.targetPath;
+  }
+
   public onChange(listener: ConfigChangeListener): () => void {
     this.listeners.add(listener);
     return () => {

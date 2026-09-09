@@ -213,6 +213,10 @@ export class GatewayDatabase {
     stmt.run(keepCount);
   }
 
+  public clearRequestLogs(): void {
+    this.db.exec('DELETE FROM request_log;');
+  }
+
   public getProviderStats(): ProviderStatsRecord[] {
     const stmt = this.db.prepare(`
       SELECT * FROM provider_stats

@@ -21,6 +21,9 @@ export function runQuotaCommand(
     _API_KEY: apiKey,
     _BASE_URL: provider.baseUrl,
     _PROVIDER: provider.id,
+    __API_KEY: apiKey,
+    __BASE_URL: provider.baseUrl,
+    __PROVIDER: provider.id,
   };
 
   exec(

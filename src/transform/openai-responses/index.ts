@@ -427,18 +427,18 @@ export function canonicalToOpenAiResponsesResponse(
     }
   }
 
+  if (thinking.length > 0) {
+    output.push({
+      type: 'reasoning',
+      summary: [{ type: 'summary_text', text: thinking }],
+    });
+  }
+
   if (text.length > 0) {
     output.push({
       type: 'message',
       role: 'assistant',
       content: [{ type: 'output_text', text }],
-    });
-  }
-
-  if (thinking.length > 0) {
-    output.push({
-      type: 'reasoning',
-      summary: [{ type: 'summary_text', text: thinking }],
     });
   }
 

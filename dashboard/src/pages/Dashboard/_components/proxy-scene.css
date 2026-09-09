@@ -1,0 +1,224 @@
+/*
+ * Local proxy card background: snow mountains + sunset.
+ * Scoped to .proxy-scene; sizes use container query units cqmin/cqh to fit the card.
+ * Proxy enabled (.running) -> sun rises from behind the ridge, snow peaks get warm alpine glow; disabled -> sun sets behind.
+ * Theme: light is near-white daylight snow mountains, dark is twilight snow mountains (palette in .dark override;
+ * stars/drifting clouds are rendered per theme by the component).
+ */
+
+.proxy-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  container-type: size;
+  pointer-events: none;
+  z-index: 0;
+
+  /* Light: daylight snow mountains, cool top to warm bottom (sunset) */
+  --sky-top: #f6f9fe; /* near-white sky */
+  --sky-mid: #fdeede; /* warm white transition */
+  --sky-low: #ffd9b0; /* horizon sunset warmth */
+  --sun-core: #fff1cf;
+  --sun: #ffb24d;
+  --glow: #ffc79a;
+  --snow: #ffffff;
+  --snow-shade: #d8e4f3; /* cold snow shadow */
+  --rock: #aebfd6;
+  --rock-deep: #8ea2c2;
+  --haze: #f6f9fe; /* distant mountains mist blending into sky */
+
+  background:
+    radial-gradient(135% 78% at 60% 96%, var(--sky-low), transparent 58%),
+    linear-gradient(to bottom, var(--sky-top), var(--sky-mid) 60%, var(--sky-low));
+}
+
+/* Dark: twilight snow mountains */
+.dark .proxy-scene {
+  --sky-top: #0a1330;
+  --sky-mid: #1a2350;
+  --sky-low: #3b2a55;
+  --sun-core: #ffd0a0;
+  --sun: #ff7a3d;
+  --glow: #ff8a55;
+  --snow: #e9f0ff;
+  --snow-shade: #92a4c8;
+  --rock: #3c496b;
+  --rock-deep: #283251;
+  --haze: #131d3e;
+}
+
+.proxy-scene *,
+.proxy-scene *:before,
+.proxy-scene *:after {
+  position: absolute;
+}
+
+/* Horizon sunset glow (behind the mountains) */
+.proxy-scene .glow {
+  inset: 0;
+  background: radial-gradient(
+    42cqmin 30cqmin at 60% 80%,
+    var(--glow),
+    transparent 70%
+  );
+  opacity: 0.4;
+  transition: opacity 1.6s ease;
+}
+.proxy-scene.running .glow {
+  opacity: 0.92;
+}
+
+/* Sunset sun: resting behind the ridge when stopped, rises when running (transition drives rise/fall, behind the mountains) */
+.proxy-scene .sun {
+  width: 24cqmin;
+  height: 24cqmin;
+  left: 56%;
+  top: 50%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 46%,
+    var(--sun-core),
+    var(--sun) 58%,
+    transparent 72%
+  );
+  box-shadow: 0 0 9cqmin var(--glow);
+  opacity: 0.2;
+  transform: translateY(64%);
+  transition:
+    transform 1.8s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 1.4s ease;
+}
+.proxy-scene.running .sun {
+  opacity: 1;
+  transform: translateY(-46%);
+}
+
+/* Stars (dark theme, rendered by component) */
+.proxy-scene .stars {
+  top: 0;
+  left: 0;
+  width: 1.4px;
+  height: 1.4px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow:
+    9cqmin 7cqh 0 0 #cfe0ff,
+    21cqmin 13cqh 0 0 #eaf2ff,
+    35cqmin 5cqh 0 0 #b9d0f5,
+    47cqmin 16cqh 0 0 #eaf2ff,
+    59cqmin 9cqh 0 0 #cfe0ff,
+    71cqmin 18cqh 0 0 #dce9ff,
+    84cqmin 6cqh 0 0 #eaf2ff,
+    93cqmin 15cqh 0 0 #b9d0f5,
+    15cqmin 24cqh 0 0 #cfe0ff,
+    40cqmin 27cqh 0 0 #dce9ff,
+    66cqmin 25cqh 0 0 #eaf2ff,
+    88cqmin 30cqh 0 0 #cfe0ff;
+  animation: proxy-scene-twinkle 4.5s ease-in-out infinite;
+}
+@keyframes proxy-scene-twinkle {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Drifting clouds (light theme, rendered by component): high thin wisps drifting slowly */
+.proxy-scene .cloud {
+  top: 17%;
+  left: 0;
+  width: 34cqmin;
+  height: 2.6cqmin;
+  border-radius: 50%;
+  background: var(--haze);
+  opacity: 0.75;
+  filter: blur(2px);
+  transform: translateX(-46cqmin);
+  animation: proxy-scene-drift 95s linear infinite;
+}
+.proxy-scene .cloud-1 {
+  top: 30%;
+  width: 22cqmin;
+  height: 1.8cqmin;
+  opacity: 0.5;
+  animation-duration: 130s;
+  animation-delay: -40s;
+}
+@keyframes proxy-scene-drift {
+  to {
+    transform: translateX(150cqmin);
+  }
+}
+
+/* Snow ridge: clip-path sawtooth outline + top snow gradient; warm alpine glow overlay when running */
+.proxy-scene .range {
+  left: -5%;
+  right: -5%;
+  bottom: 0;
+}
+.proxy-scene .range::after {
+  content: "";
+  inset: 0;
+  background: linear-gradient(112deg, var(--glow) 0 36%, transparent 60%);
+  opacity: 0;
+  mix-blend-mode: soft-light;
+  transition: opacity 1.6s ease;
+}
+.proxy-scene.running .range::after {
+  opacity: 0.9;
+}
+
+/* Distant mountains: misty tones blending into sky, low contrast */
+.proxy-scene .range-far {
+  height: 50%;
+  clip-path: polygon(
+    0 100%, 0 60%, 12% 44%, 23% 58%, 35% 40%, 48% 56%,
+    61% 42%, 74% 58%, 86% 46%, 100% 60%, 100% 100%
+  );
+  background: linear-gradient(to bottom, var(--haze), var(--snow-shade));
+  opacity: 0.6;
+  filter: blur(0.4px);
+}
+
+/* Main peak: prominent snow cap (snow -> snow shadow -> rock face) */
+.proxy-scene .range-mid {
+  height: 64%;
+  clip-path: polygon(
+    0 100%, 0 54%, 10% 30%, 20% 50%, 32% 16%, 44% 46%,
+    56% 24%, 70% 48%, 82% 20%, 92% 44%, 100% 34%, 100% 100%
+  );
+  background: linear-gradient(
+    to bottom,
+    var(--snow) 0 13%,
+    var(--snow-shade) 13% 25%,
+    var(--rock) 52%,
+    var(--rock-deep)
+  );
+}
+
+/* Foreground peak: deepest, largest, anchoring the bottom */
+.proxy-scene .range-near {
+  height: 42%;
+  clip-path: polygon(
+    0 100%, 0 66%, 17% 32%, 31% 62%, 47% 26%, 63% 60%,
+    79% 36%, 93% 64%, 100% 50%, 100% 100%
+  );
+  background: linear-gradient(
+    to bottom,
+    var(--snow) 0 9%,
+    var(--snow-shade) 9% 20%,
+    var(--rock-deep) 46%,
+    var(--rock-deep)
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .proxy-scene .stars,
+  .proxy-scene .cloud {
+    animation: none;
+  }
+}

@@ -1,5 +1,8 @@
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
+import fs from 'node:fs';
+import { promises as fsp } from 'node:fs';
+import path from 'node:path';
 import type { ConfigWatcher } from '../config/watcher.js';
 import type { GatewayDatabase } from '../storage/db.js';
 import type { RingBuffer } from '../storage/ring-buffer.js';
@@ -10,6 +13,75 @@ import { executeProviderLoop, type ClientWireFormat } from '../proxy/executor.js
 import { anthropicToCanonicalRequest } from '../transform/anthropic/index.js';
 import { openaiChatToCanonicalRequest } from '../transform/openai-chat/index.js';
 import { openaiResponsesToCanonicalRequest } from '../transform/openai-responses/index.js';
+import { gatewayEvents, EVENTS } from '../events.js';
+import { createSSEResponse } from './sse.js';
+import { saveConfig } from '../config/loader.js';
+import { rawJsonToAppConfig, appConfigToRawJson } from '../config/types.js';
+import type { AppConfig } from '../config/types.js';
+
+/**
+ * Deep-merge a raw JSON patch (from the dashboard) over the current config's
+ * raw JSON representation. Arrays are replaced wholesale; objects merge
+ * shallow-deep recursively. Returns the patched AppConfig.
+ */
+function mergeConfigPatch(base: AppConfig, patch: Record<string, unknown>): AppConfig {
+  const rawBase = appConfigToRawJson(base);
+  const merged = deepMergeRecord(rawBase as unknown as Record<string, unknown>, patch);
+  return rawJsonToAppConfig(merged);
+}
+
+/** Recursive deep merge: primitives/arrays replaced, plain objects merged. */
+function deepMergeRecord(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    const existing = out[key];
+    if (
+      existing &&
+      typeof existing === 'object' &&
+      !Array.isArray(existing) &&
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+    ) {
+      out[key] = deepMergeRecord(existing as Record<string, unknown>, value as Record<string, unknown>);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+/** Structural sanity for a config patch: must be an object, and any providers
+ *  value must be an object (not an array). */
+function validateConfigPatch(patch: unknown): void {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+    throw new Error('Config patch must be a JSON object');
+  }
+  const p = patch as Record<string, unknown>;
+  if (p.providers !== undefined && (typeof p.providers !== 'object' || Array.isArray(p.providers))) {
+    throw new Error('providers must be an object');
+  }
+}
+
+/**
+ * CSRF guard for the control plane. Mutation endpoints accept requests with no
+ * Origin header (curl, the Vite dev proxy same-origin) or a localhost origin.
+ * Non-localhost origins (a random website POSTing cross-origin) are rejected.
+ */
+function isTrustedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  const lower = origin.toLowerCase();
+  return (
+    lower.includes('localhost') ||
+    lower.includes('127.0.0.1') ||
+    lower.includes('[::1]') ||
+    lower.startsWith('file://')
+  );
+}
 
 export interface AppContext {
   configWatcher: ConfigWatcher;
@@ -82,6 +154,86 @@ export function createGatewayApp(ctx: AppContext): Hono {
     }
     const status = await ctx.laneManager.getStatus();
     return c.json({ enabled: true, status });
+  });
+
+  // Snapshot for the dashboard's initial paint (health + stats + logs + lanes + config).
+  app.get('/api/status', async (c) => {
+    const config = ctx.configWatcher.config;
+    const lanesEnabled = Boolean(ctx.laneManager?.isEnabled());
+    const lanesStatus = lanesEnabled ? await ctx.laneManager?.getStatus() : null;
+    const providerNames = Object.keys(config.providers);
+    return c.json({
+      health: {
+        status: 'ok',
+        active_provider: config.current,
+        providers_count: providerNames.length,
+        version: '0.1.0',
+        uptime: Math.floor(process.uptime()),
+      },
+      stats: ctx.db.getProviderStats(),
+      logs: ctx.ringBuffer.getRecent(100),
+      lanes: { enabled: lanesEnabled, status: lanesStatus },
+      config: {
+        listen: config.listen,
+        current: config.current,
+        requestLogLimit: config.requestLogLimit,
+        providers: providerNames,
+      },
+    });
+  });
+
+  // Server-Sent Events feed for live value updates.
+
+  // Model usage stats (all providers or filtered by provider id).
+  app.get('/api/models', (c) => {
+    const providerId = c.req.query('providerId');
+    return c.json({ data: ctx.db.getModelStats(providerId || undefined) });
+  });
+
+  // Provider configuration overview (sanitized — no API keys). Includes disabled
+// providers so the dashboard can render accurate enable/disable toggles.
+  app.get('/api/providers', (c) => {
+    const config = ctx.configWatcher.config;
+    const providers = Object.entries(config.providers)
+      .map(([name, p]) => ({
+        name,
+        id: p.id,
+        enabled: p.enabled,
+        base_url: p.baseUrl,
+        api_format: p.apiFormat,
+        api_version: p.apiVersion,
+        port: p.port ?? null,
+        fallback: p.fallback,
+        test_model: p.testModel ?? null,
+        max_tokens_cap: p.maxTokensCap ?? null,
+        inject_thinking_history: p.injectThinkingHistory,
+        routes: p.routes.filter((r) => r.enabled).map((r) => ({ pattern: r.pattern, target: r.target })),
+        model_map_keys: Object.keys(p.modelMap),
+      }));
+    return c.json({ data: providers });
+  });
+
+  // Circuit breaker state per provider id.
+  app.get('/api/breakers', (c) => {
+    const config = ctx.configWatcher.config;
+    const rows = Object.entries(config.providers)
+      .filter(([, p]) => p.enabled)
+      .map(([name, p]) => ({
+        provider_name: name,
+        provider_id: p.id,
+        state: ctx.circuitBreaker.getState(p.id),
+      }));
+    return c.json({ data: rows });
+  });
+  // Named events (incumbent-compatible): log, stats.
+  app.get('/events', (c) => {
+    const events = [EVENTS.log, EVENTS.stats] as const;
+    return createSSEResponse(c, [...events], (event) => {
+      if (event === 'stats') {
+        return { stats: ctx.db.getProviderStats() };
+      }
+      return null;
+    });
   });
 
   // Model catalog
@@ -188,6 +340,11 @@ export function createGatewayApp(ctx: AppContext): Hono {
       laneManager: ctx.laneManager,
       onRecordStats: (providerId, providerName, delta) => {
         ctx.db.recordStats(providerId, providerName, canonical.model, delta);
+        gatewayEvents.emit(EVENTS.stats, {
+          providerId,
+          providerName,
+          delta,
+        });
       },
       onLogRequest: (entry) => {
         const logRecord = {
@@ -205,6 +362,7 @@ export function createGatewayApp(ctx: AppContext): Hono {
         };
         ctx.db.recordRequestLog(logRecord, config.requestLogLimit);
         ctx.ringBuffer.push(logRecord);
+        gatewayEvents.emit(EVENTS.log, logRecord);
       },
     });
   }
@@ -217,6 +375,134 @@ export function createGatewayApp(ctx: AppContext): Hono {
 
   // OpenAI Responses Ingress
   app.post('/v1/responses', (c) => handleDispatch(c, 'openai_responses'));
+
+  // ─────────────────────────────────────────────────────────────
+  // CONTROL PLANE
+  // ─────────────────────────────────────────────────────────────
+
+  // CSRF guard: mutations with a non-localhost Origin are rejected.
+  app.use('/api/*', async (c, next) => {
+    if (c.req.method === 'POST' && !isTrustedOrigin(c.req.header('origin'))) {
+      return c.json({ ok: false, error: 'Cross-origin mutations are not allowed' }, { status: 403 });
+    }
+    return next();
+  });
+
+  // Write the full config (atomic; the config watcher hot-reloads on save).
+  app.post('/api/config', async (c) => {
+    try {
+      const body = await c.req.json<Record<string, unknown>>();
+      validateConfigPatch(body);
+      const merged = mergeConfigPatch(ctx.configWatcher.config, body);
+      saveConfig(merged, ctx.configWatcher.configPath);
+      return c.json({ ok: true, message: 'Configuration saved' });
+    } catch (err) {
+      return c.json(
+        { ok: false, error: err instanceof Error ? err.message : String(err) },
+        { status: 400 }
+      );
+    }
+  });
+
+  // Disable/enable a provider.
+  app.post('/api/providers/:id/toggle', async (c) => {
+    const id = c.req.param('id');
+    const config = ctx.configWatcher.config;
+    const provider = config.providers[id];
+    if (!provider) {
+      return c.json({ ok: false, error: `Provider not found: ${id}` }, { status: 404 });
+    }
+    provider.enabled = !provider.enabled;
+    saveConfig(config, ctx.configWatcher.configPath);
+    return c.json({
+      ok: true,
+      provider: id,
+      enabled: provider.enabled,
+      message: `${id} ${provider.enabled ? 'enabled' : 'disabled'}`,
+    });
+  });
+
+  // Reset a circuit breaker for a provider.
+  app.post('/api/breakers/:id/reset', (c) => {
+    const id = c.req.param('id');
+    ctx.circuitBreaker.reset(id);
+    return c.json({ ok: true, provider: id, state: ctx.circuitBreaker.getState(id) });
+  });
+
+  // Clear the request log ring buffer + DB request logs.
+  app.post('/api/logs/clear', (c) => {
+    ctx.ringBuffer.clear();
+    ctx.db.clearRequestLogs();
+    return c.json({ ok: true, message: 'Request logs cleared' });
+  });
+
+  // Manually trigger a lane rotation for an egress port.
+  app.post('/api/lanes/rotate', async (c) => {
+    if (!ctx.laneManager || !ctx.laneManager.isEnabled()) {
+      return c.json({ ok: false, error: 'Lanes are disabled' }, { status: 409 });
+    }
+    const body = await c.req.json().catch(() => ({}));
+    const port = Number(body.port) || 0;
+    if (!port) {
+      return c.json({ ok: false, error: 'Missing port' }, { status: 400 });
+    }
+    ctx.laneManager.triggerRotation(port);
+    return c.json({ ok: true, port, message: `Rotation requested for port ${port}` });
+  });
+
+  // Toggle lanes enabled state in config.
+  app.post('/api/lanes/toggle', async (c) => {
+    const config = ctx.configWatcher.config;
+    if (!config.lanes) {
+      return c.json({ ok: false, error: 'No lanes section in config' }, { status: 409 });
+    }
+    config.lanes.enabled = !config.lanes.enabled;
+    saveConfig(config, ctx.configWatcher.configPath);
+    return c.json({ ok: true, enabled: config.lanes.enabled });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // Static dashboard bundle (built Vite app in dashboard/dist).
+  const dashboardDist = path.resolve(process.cwd(), 'dashboard', 'dist');
+  if (fs.existsSync(dashboardDist)) {
+    const indexHtml = fs.readFileSync(path.join(dashboardDist, 'index.html'), 'utf8');
+    app.get('/dashboard', (c) => c.html(indexHtml));
+    const MIME_TYPES: Record<string, string> = {
+      '.js': 'text/javascript',
+      '.css': 'text/css',
+      '.html': 'text/html',
+      '.svg': 'image/svg+xml',
+      '.png': 'image/png',
+      '.ico': 'image/x-icon',
+      '.woff2': 'font/woff2',
+      '.json': 'application/json',
+    };
+    app.get('/dashboard/*', async (c) => {
+      // Strip the /dashboard prefix, then serve real files or fall back to SPA index.
+      const urlPath = c.req.path.replace(/^\/dashboard\/?/, '');
+      const candidates = urlPath
+        ? [path.join(dashboardDist, urlPath), path.join(dashboardDist, urlPath, 'index.html')]
+        : [path.join(dashboardDist, 'index.html')];
+      for (const candidate of candidates) {
+        // Enforce directory boundary after normalization to block path traversal.
+        const resolved = path.resolve(candidate);
+        if (resolved !== dashboardDist && !resolved.startsWith(dashboardDist + path.sep)) continue;
+        try {
+          const st = await fsp.stat(resolved);
+          if (!st.isFile()) continue;
+          const ext = path.extname(resolved);
+          const mime = MIME_TYPES[ext] || 'application/octet-stream';
+          return c.body(await fsp.readFile(resolved), 200, {
+            'content-type': mime,
+            'cache-control': ext ? 'public, max-age=31536000, immutable' : 'no-cache',
+          });
+        } catch {
+          continue;
+        }
+      }
+      return c.html(indexHtml);
+    });
+  }
 
   return app;
 }
