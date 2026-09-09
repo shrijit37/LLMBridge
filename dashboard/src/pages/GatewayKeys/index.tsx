@@ -1,7 +1,9 @@
 import { useMemo } from "react";
-import { KeyRound, ShieldAlert, Sparkles } from "lucide-react";
+import { KeyRound, ShieldAlert, Sparkles, KeyRoundIcon } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
+import { EmptyState } from "@/components/common/EmptyState";
 import { Card, CardContent } from "@/components/ui/card";
+import { DataTable, TableHead } from "@/components/ui/data-table";
 import { TabularText } from "@/components/ui/TabularText";
 import { useStats } from "@/hooks/useStats";
 
@@ -37,38 +39,42 @@ export function GatewayKeys() {
       />
 
       <Card>
-        <CardContent className="flex flex-col gap-3 px-5 py-4">
-          <h2 className="text-sm font-medium">Quota snapshots</h2>
+        <CardContent className="px-5 py-4">
+          <h2 className="mb-3 text-sm font-medium">Quota snapshots</h2>
           {quotaRows.length === 0 ? (
-            <p className="py-8 text-center text-sm text-ink-mute">
-              No quota snapshots yet — configure a provider with quota_command to populate.
-            </p>
+            <EmptyState
+              icon={KeyRoundIcon}
+              heading="No quota snapshots yet"
+              description="Configure a provider with quota_command to populate this table."
+            />
           ) : (
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-edge text-left text-xs text-ink-mute">
-                  <th className="px-2 pb-2 font-medium">Provider</th>
-                  <th className="px-2 pb-2 font-medium">Quota output</th>
-                </tr>
-              </thead>
-              <tbody>
-                {quotaRows.map((s) => (
-                  <tr
-                    key={s.provider_id}
-                    className="border-b border-edge-subtle last:border-0 hover:bg-surface-hover"
-                  >
-                    <td className="px-2 py-2">
-                      <TabularText className="text-xs">{s.provider_name}</TabularText>
-                    </td>
-                    <td className="px-2 py-2">
-                      <pre className="whitespace-pre-wrap rounded bg-surface-raised p-3 font-mono text-xs">
-                        {s.quota_output}
-                      </pre>
-                    </td>
+            <DataTable>
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-edge text-left">
+                    <TableHead>Provider</TableHead>
+                    <TableHead>Quota output</TableHead>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {quotaRows.map((s) => (
+                    <tr
+                      key={s.provider_id}
+                      className="border-b border-edge-subtle last:border-0 transition-colors hover:bg-surface-hover"
+                    >
+                      <td className="px-3 py-2.5">
+                        <TabularText className="text-xs">{s.provider_name}</TabularText>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <pre className="whitespace-pre-wrap rounded bg-surface-raised p-3 font-mono text-xs">
+                          {s.quota_output}
+                        </pre>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </DataTable>
           )}
         </CardContent>
       </Card>

@@ -1,14 +1,16 @@
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { DataTable, TableHead } from "@/components/ui/data-table";
 import { TabularText } from "@/components/ui/TabularText";
+import { EmptyState } from "@/components/common/EmptyState";
 import { useRequestLogs } from "@/hooks/useRequestLogs";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatTokenK } from "@/lib/format";
 import type { RequestLogRecord } from "@/hooks/types";
 
 function statusVariant(status: number): "success" | "info" | "danger" | "warning" | "muted" {
-  if (status === 0) return "danger"; // transport error
+  if (status === 0) return "danger";
   if (status >= 200 && status < 300) return "success";
   if (status >= 400 && status < 500) return "warning";
   if (status >= 500) return "danger";
@@ -36,11 +38,11 @@ export function RequestMonitor({ pageSize = 10 }: { pageSize?: number }) {
 
   return (
     <Card>
-      <CardContent className="flex flex-col gap-3 px-5 py-4">
-        <div className="flex items-center justify-between gap-2">
+      <CardContent className="px-5 py-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="text-sm font-medium text-ink-primary">Live Requests</h3>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-mute">
+            <span className="inline-flex items-center gap-1.5 text-xs text-ink-mute">
               <span className="relative flex size-1.5">
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
                 <span className="relative inline-flex size-1.5 rounded-full bg-success" />
@@ -54,29 +56,30 @@ export function RequestMonitor({ pageSize = 10 }: { pageSize?: number }) {
         </div>
 
         {items.length === 0 ? (
-          <p className="py-8 text-center text-sm text-ink-mute">
-            No requests yet — send traffic through the gateway and it appears here live.
-          </p>
+          <EmptyState
+            heading="No requests yet"
+            description="Send traffic through the gateway and it appears here live."
+          />
         ) : (
-          <div className="overflow-x-auto scrollbar-none">
+          <DataTable>
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b border-edge text-left text-xs text-ink-mute">
-                  <th className="px-2 pb-2 font-medium">Status</th>
-                  <th className="px-2 pb-2 font-medium">Model</th>
-                  <th className="px-2 pb-2 font-medium">Provider</th>
-                  <th className="px-2 pb-2 text-right font-medium">Latency</th>
-                  <th className="px-2 pb-2 text-right font-medium">Tokens</th>
-                  <th className="px-2 pb-2 text-right font-medium">Age</th>
+                <tr className="border-b border-edge text-left">
+                  <TableHead>Status</TableHead>
+                  <TableHead>Model</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead align="right">Latency</TableHead>
+                  <TableHead align="right">Tokens</TableHead>
+                  <TableHead align="right">Age</TableHead>
                 </tr>
               </thead>
               <tbody>
                 {items.map((log, idx) => (
                   <tr
                     key={log.id ?? `${log.timestamp_ms}-${idx}`}
-                    className="border-b border-edge-subtle last:border-0 hover:bg-surface-hover"
+                    className="border-b border-edge-subtle last:border-0 transition-colors hover:bg-surface-hover"
                   >
-                    <td className="px-2 py-2">
+                    <td className="px-3 py-2.5">
                       <Badge variant={statusVariant(log.status)}>
                         <TabularText>{statusLabel(log.status)}</TabularText>
                       </Badge>
@@ -84,26 +87,26 @@ export function RequestMonitor({ pageSize = 10 }: { pageSize?: number }) {
                         <span className="ml-1.5 text-[10px] text-ink-mute">stream</span>
                       ) : null}
                     </td>
-                    <td className={cn("px-2 py-2 font-mono text-xs", log.model ? "text-ink-primary" : "text-ink-mute")}>
+                    <td className={cn("px-3 py-2.5 font-mono text-xs", log.model ? "text-ink-primary" : "text-ink-mute")}>
                       {log.model || "—"}
                     </td>
-                    <td className="px-2 py-2 text-ink-secondary">{log.provider_name}</td>
-                    <td className="px-2 py-2 text-right">
+                    <td className="px-3 py-2.5 text-ink-secondary">{log.provider_name}</td>
+                    <td className="px-3 py-2.5 text-right">
                       <TabularText className="text-xs">{formatDuration(log.latency_ms)}</TabularText>
                     </td>
-                    <td className="px-2 py-2 text-right">
+                    <td className="px-3 py-2.5 text-right">
                       <TabularText className="text-xs">
                         {formatTokenK(log.input_tokens + log.output_tokens)}
                       </TabularText>
                     </td>
-                    <td className="px-2 py-2 text-right text-xs text-ink-mute">
+                    <td className="px-3 py-2.5 text-right text-xs text-ink-mute">
                       {timeAgo(log.timestamp_ms)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </DataTable>
         )}
       </CardContent>
     </Card>

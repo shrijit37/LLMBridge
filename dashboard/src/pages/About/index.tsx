@@ -1,10 +1,10 @@
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
-import { PageHeader } from "@/components/common/PageHeader"
-import { StatusDot } from "@/components/ui/StatusDot"
-import { TabularText } from "@/components/ui/TabularText"
-import { useSnapshot } from "@/hooks/useSnapshot"
-import { useStatus } from "@/hooks/useStatus"
+import { useStatus } from "@/hooks/useStatus";
+import { useSnapshot } from "@/hooks/useSnapshot";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { StatusDot } from "@/components/ui/StatusDot";
+import { TabularText } from "@/components/ui/TabularText";
+import { PageHeader } from "@/components/common/PageHeader";
 
 function fmtUptime(s: number): string {
   if (!s || Number.isNaN(s)) return "—"
@@ -47,7 +47,7 @@ export function About() {
           <div className="flex items-center gap-2">
             <StatusDot status="success" pulse />
             <span className="flex items-center gap-2">
-              <span>CCS Gateway</span>
+              <span className="font-medium">CCS Gateway</span>
               <Badge variant="muted" className="font-mono text-[10px]">
                 ccs-ts
               </Badge>
@@ -92,12 +92,14 @@ export function About() {
 
       <Card>
         <CardContent className="flex flex-col gap-3 px-5 py-4">
-          <h2 className="text-sm font-medium text-ink-primary">Tech</h2>
-          <ul className="flex flex-col gap-1.5 text-xs text-ink-mute">
+          <h2 className="text-sm font-medium text-ink-primary">Built with</h2>
+          <div className="flex flex-wrap gap-2">
             {tech.map((item) => (
-              <li key={item}>• {item}</li>
+              <Badge key={item} variant="secondary" className="text-xs">
+                {item}
+              </Badge>
             ))}
-          </ul>
+          </div>
         </CardContent>
       </Card>
 

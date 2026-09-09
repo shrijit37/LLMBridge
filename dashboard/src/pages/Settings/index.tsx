@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { TabularText } from "@/components/ui/TabularText";
+import { DataTable, TableHead } from "@/components/ui/data-table";
 import { useSnapshot } from "@/hooks/useSnapshot";
 import { useStatus } from "@/hooks/useStatus";
 import { controlApi } from "@/services/control";
@@ -51,64 +52,71 @@ export function Settings() {
         description="Live configuration view — edit request-log retention and watch for the atomic reload."
       />
 
+      {/* Current configuration */}
       <Card>
         <CardContent className="flex flex-col gap-3 px-5 py-4">
-          <span className="text-sm font-medium">Listen</span>
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-sm text-ink-secondary">Address</span>
-            <TabularText className="text-xs">{config?.listen ?? "—"}</TabularText>
+          <span className="text-sm font-medium">Current Configuration</span>
+          <div className="flex flex-col gap-2 text-sm">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-ink-secondary">Listen address</span>
+              <TabularText className="text-xs">{config?.listen ?? "—"}</TabularText>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-ink-secondary">Request log limit</span>
+              <TabularText className="text-xs">
+                {config?.requestLogLimit ?? "—"}
+              </TabularText>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-ink-secondary">Current provider</span>
+              <TabularText className="text-xs">{config?.current ?? "—"}</TabularText>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-ink-secondary">Gateway uptime</span>
+              <TabularText className="text-xs">{uptime}</TabularText>
+            </div>
           </div>
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-sm text-ink-secondary">Request log limit</span>
-            <TabularText className="text-xs">
-              {config?.requestLogLimit ?? "—"}
-            </TabularText>
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-sm text-ink-secondary">Current provider</span>
-            <TabularText className="text-xs">{config?.current ?? "—"}</TabularText>
-          </div>
+
+          {providers.length > 0 ? (
+            <>
+              <div className="my-1 h-px bg-edge" />
+              <span className="text-xs text-ink-secondary">Configured providers</span>
+              <DataTable>
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-edge text-left">
+                      <TableHead>Provider</TableHead>
+                      <TableHead>Request log limit</TableHead>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {providers.map((name) => (
+                      <tr key={name} className="border-b border-edge-subtle last:border-0 transition-colors hover:bg-surface-hover">
+                        <td className="px-3 py-2.5">
+                          <span className="flex items-center gap-2">
+                            <StatusDot status="success" />
+                            <TabularText className="text-xs">{name}</TabularText>
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <Badge variant="outline">
+                            <TabularText className="text-xs">{config?.requestLogLimit}</TabularText>
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </DataTable>
+            </>
+          ) : null}
         </CardContent>
       </Card>
 
+      {/* Edit configuration */}
       <Card>
         <CardContent className="flex flex-col gap-3 px-5 py-4">
-          <span className="text-sm font-medium">Providers</span>
-          {providers.length === 0 ? (
-            <p className="py-8 text-center text-sm text-ink-mute">No providers configured.</p>
-          ) : (
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-edge text-left text-xs text-ink-mute">
-                  <th className="px-2 pb-2 font-medium">Provider</th>
-                  <th className="px-2 pb-2 font-medium">Request log limit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {providers.map((name) => (
-                  <tr key={name} className="border-b border-edge-subtle last:border-0 hover:bg-surface-hover">
-                    <td className="px-2 py-2">
-                      <span className="flex items-center gap-2">
-                        <StatusDot status="success" />
-                        <TabularText className="text-xs">{name}</TabularText>
-                      </span>
-                    </td>
-                    <td className="px-2 py-2">
-                      <Badge variant="outline">
-                        <TabularText className="text-xs">{config?.requestLogLimit}</TabularText>
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="flex flex-col gap-3 px-5 py-4">
-          <span className="text-sm font-medium">Edit configuration</span>
+          <span className="text-sm font-medium">Edit Configuration</span>
           <label className="flex flex-col gap-1.5">
             <span className="text-sm text-ink-secondary">Request log limit</span>
             <Input
@@ -125,34 +133,16 @@ export function Settings() {
               onClick={() => saveMut.mutate()}
               disabled={saveMut.isPending || limit === String(config?.requestLogLimit)}
             >
-              {saveMut.isPending ? "Applying…" : "Apply"}
+              {saveMut.isPending ? "Applying..." : "Apply"}
             </Button>
           </div>
           <p className="text-xs text-ink-mute">
             Config hot-reloads from <TabularText className="text-xs">$CCS_CONFIG_DIR/config.json</TabularText>{" "}
-            after save.
+            after save. The full config JSON lives server-side; this page shows only the
+            active snapshot as reported by the gateway.
           </p>
         </CardContent>
       </Card>
-
-      <Card>
-        <CardContent className="flex flex-col gap-3 px-5 py-4">
-          <span className="text-sm font-medium">Config source</span>
-          <p className="text-sm text-ink-mute">
-            Config is watched live from <TabularText className="text-xs">$CCS_CONFIG_DIR/config.json</TabularText>{" "}
-            and hot-reloaded on change.
-          </p>
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-sm text-ink-secondary">Gateway uptime</span>
-            <TabularText className="text-xs">{uptime}</TabularText>
-          </div>
-        </CardContent>
-      </Card>
-
-      <p className="text-sm text-ink-mute">
-        About this view: the full config JSON lives server-side; this page shows only the
-        active snapshot as reported by the gateway.
-      </p>
     </div>
   );
 }

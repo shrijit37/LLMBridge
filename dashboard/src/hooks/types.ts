@@ -69,13 +69,17 @@ export interface ProviderInfo {
   enabled: boolean;
   base_url: string;
   api_format: string;
-  api_version?: string;
+  api_version: string | null;
   port: number | null;
   fallback: boolean;
   test_model: string | null;
   max_tokens_cap: number | null;
   inject_thinking_history: boolean;
-  routes: { pattern: string; target: string }[];
+  strict_thinking_history: boolean;
+  quota_command: string | null;
+  model_map: Record<string, string>;
+  extra_headers: Record<string, string>;
+  routes: { pattern: string; target: string; enabled: boolean }[];
   model_map_keys: string[];
 }
 

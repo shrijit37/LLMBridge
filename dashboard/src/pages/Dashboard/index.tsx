@@ -1,6 +1,8 @@
 import { useMemo } from "react";
+import { ActivityIcon, AlertTriangleIcon, CoinsIcon } from "lucide-react";
 import { StatCard, TokenHint, RequestMonitor } from "@/components/business";
 import { useStats } from "@/hooks/useStats";
+import { PageHeader } from "@/components/common/PageHeader";
 import { ServiceCard } from "./_components/ServiceCard";
 
 export function Dashboard() {
@@ -13,7 +15,6 @@ export function Dashboard() {
       input: 0,
       output: 0,
     };
-    // Raw per-provider rows; on a live gateway these are lifetime counters.
     for (const s of stats ?? []) {
       t.requests += s.requests;
       t.failures += s.failures;
@@ -28,22 +29,28 @@ export function Dashboard() {
     totals.requests > 0 ? ((totals.requests - totals.failures) / totals.requests) * 100 : 100;
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
-      <header className="flex flex-col gap-1">
-        <span className="text-[10px] font-medium tracking-[0.06em] text-ink-secondary uppercase">
-          Dashboard
-        </span>
-        <h1 className="text-2xl font-light tracking-tight">Dashboard</h1>
-      </header>
+    <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
+      <PageHeader
+        eyebrow="Overview"
+        title="Dashboard"
+        description="Gateway status, provider queues, and live request feed."
+      />
 
       <ServiceCard />
 
       {/* Today's requests / failures / tokens, update in real-time with SSE */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Requests" value={totals.requests.toLocaleString()} />
+        <StatCard
+          label="Requests"
+          value={totals.requests.toLocaleString()}
+          icon={ActivityIcon}
+          color="primary"
+        />
         <StatCard
           label="Failures"
           value={totals.failures.toLocaleString()}
+          icon={AlertTriangleIcon}
+          color="destructive"
           hint={
             <span className="text-xs text-ink-secondary">
               {successRate.toFixed(1)}% success
@@ -54,6 +61,8 @@ export function Dashboard() {
         <StatCard
           label="Tokens"
           value={tokens.toLocaleString()}
+          icon={CoinsIcon}
+          color="info"
           hint={<TokenHint value={tokens} />}
           hintBelow
         />

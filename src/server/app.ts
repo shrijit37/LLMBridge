@@ -156,6 +156,25 @@ export function createGatewayApp(ctx: AppContext): Hono {
     return c.json({ enabled: true, status });
   });
 
+  // Lane configuration (ports, proxy_base, ctl_url) — editable by dashboard.
+  app.get('/api/lanes/config', (c) => {
+    const config = ctx.configWatcher.config;
+    const lanes = config.lanes;
+    if (!lanes) return c.json({ data: null });
+    return c.json({
+      data: {
+        enabled: lanes.enabled,
+        proxy_base: lanes.proxyBase,
+        ctl_url: lanes.ctlUrl,
+        token: lanes.token ?? '',
+        ports: lanes.ports,
+        endpoint_name: lanes.endpointName ?? null,
+        max_rotations_per_window: lanes.maxRotationsPerWindow ?? null,
+        window_secs: lanes.windowSecs ?? null,
+      },
+    });
+  });
+
   // Snapshot for the dashboard's initial paint (health + stats + logs + lanes + config).
   app.get('/api/status', async (c) => {
     const config = ctx.configWatcher.config;
@@ -201,13 +220,21 @@ export function createGatewayApp(ctx: AppContext): Hono {
         enabled: p.enabled,
         base_url: p.baseUrl,
         api_format: p.apiFormat,
-        api_version: p.apiVersion,
+        api_version: p.apiVersion ?? null,
         port: p.port ?? null,
         fallback: p.fallback,
         test_model: p.testModel ?? null,
         max_tokens_cap: p.maxTokensCap ?? null,
         inject_thinking_history: p.injectThinkingHistory,
-        routes: p.routes.filter((r) => r.enabled).map((r) => ({ pattern: r.pattern, target: r.target })),
+        strict_thinking_history: p.strictThinkingHistory,
+        quota_command: p.quotaCommand ?? null,
+        model_map: p.modelMap,
+        extra_headers: p.extraHeaders,
+        routes: p.routes.map((r) => ({
+          pattern: r.pattern,
+          target: r.target,
+          enabled: r.enabled,
+        })),
         model_map_keys: Object.keys(p.modelMap),
       }));
     return c.json({ data: providers });

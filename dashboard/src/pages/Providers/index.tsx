@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { RotateCcw } from "lucide-react";
+import { Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import { useStats } from "@/hooks/useStats";
 import { useBreakers } from "@/hooks/useBreakers";
 import { controlApi } from "@/services/control";
 import { cn } from "@/lib/utils";
+import { ProviderFormDialog, type ProviderFormData } from "./ProviderFormDialog";
 import type { ProviderInfo, ProviderStat, BreakerInfo } from "@/hooks/types";
 
 function breakerLookup(breakers: BreakerInfo[], name: string) {
@@ -62,10 +64,14 @@ function ProviderCard({
   provider,
   breakers,
   statsByProvider,
+  onEdit,
+  onDelete,
 }: {
   provider: ProviderInfo;
   breakers: BreakerInfo[];
   statsByProvider: Map<string, ProviderStat>;
+  onEdit: (provider: ProviderInfo) => void;
+  onDelete: (provider: ProviderInfo) => void;
 }) {
   const qc = useQueryClient();
   const toggleMut = useMutation({
@@ -96,7 +102,19 @@ function ProviderCard({
     <Card className={cn(!provider.enabled && "border-dashed opacity-70")}>
       <CardContent className="flex flex-col gap-3 px-5 py-4">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium">{provider.name}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-medium">{provider.name}</span>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => onEdit(provider)}
+              aria-label={`Edit ${provider.name}`}
+              title="Edit provider"
+              className="shrink-0"
+            >
+              <Pencil className="size-3" />
+            </Button>
+          </span>
           <div className="flex items-center gap-2">
             {!provider.enabled ? <Badge variant="muted">disabled</Badge> : null}
             <Badge variant="info">{provider.api_format}</Badge>
@@ -121,6 +139,19 @@ function ProviderCard({
             </Button>
           </div>
         ) : null}
+
+        <div className="flex items-center justify-end">
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => onDelete(provider)}
+            aria-label={`Delete ${provider.name}`}
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 />
+            Remove
+          </Button>
+        </div>
 
         <div className="flex items-center gap-2">
           {meta ? (
@@ -187,6 +218,49 @@ export function Providers() {
   const { data: providers } = useProviders();
   const { data: stats } = useStats();
   const { data: breakers } = useBreakers();
+  const qc = useQueryClient();
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<ProviderFormData | null>(null);
+
+  const deleteMut = useMutation({
+    mutationFn: (name: string) =>
+      controlApi.saveConfig({ providers: { [name]: null } }),
+    onSuccess: (_r, name) => {
+      toast.success(`Removed ${name}`);
+      qc.invalidateQueries({ queryKey: ["providers"] });
+      qc.invalidateQueries({ queryKey: ["breakers"] });
+      qc.invalidateQueries({ queryKey: ["snapshot"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : String(e)),
+  });
+
+  const openAdd = () => {
+    setEditing(null);
+    setDialogOpen(true);
+  };
+  const openEdit = (p: ProviderInfo) => {
+    setEditing({
+      name: p.name,
+      base_url: p.base_url,
+      api_key: "",
+      api_format: p.api_format,
+      api_version: p.api_version ?? "responses",
+      enabled: p.enabled,
+      test_model: p.test_model ?? "",
+      fallback: p.fallback,
+      max_tokens_cap: p.max_tokens_cap != null ? String(p.max_tokens_cap) : "",
+      port: p.port != null ? String(p.port) : "",
+      quota_command: p.quota_command ?? "",
+      inject_thinking_history: p.inject_thinking_history,
+      strict_thinking_history: p.strict_thinking_history,
+      model_map: { ...p.model_map },
+      extra_headers: { ...p.extra_headers },
+      routes: p.routes.map((r) => ({ ...r })),
+    });
+    setDialogOpen(true);
+  };
 
   const statsByProvider = new Map<string, ProviderStat>();
   for (const s of stats ?? []) statsByProvider.set(s.provider_name, s);
@@ -197,6 +271,12 @@ export function Providers() {
         eyebrow="Infrastructure"
         title="Providers"
         description="Provider configuration and live health."
+        actions={
+          <Button onClick={openAdd}>
+            <Plus />
+            Add provider
+          </Button>
+        }
       />
       {!providers || providers.length === 0 ? (
         <Card>
@@ -214,10 +294,22 @@ export function Providers() {
               provider={p}
               breakers={breakers ?? []}
               statsByProvider={statsByProvider}
+              onEdit={openEdit}
+              onDelete={(provider) => {
+                if (window.confirm(`Remove provider "${provider.name}"?`)) {
+                  deleteMut.mutate(provider.name);
+                }
+              }}
             />
           ))}
         </div>
       )}
+
+      <ProviderFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        initial={editing}
+      />
     </div>
   );
 }

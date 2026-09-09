@@ -1,0 +1,41 @@
+{
+  "current": "deepseek-prod",
+  "listen": "0.0.0.0:7896",
+  "request_log_limit": 500,
+  "providers": {
+    "deepseek-prod": {
+      "base_url": "https://api.deepseek.com",
+      "api_key": "$DEEPSEEK_API_KEY",
+      "api_format": "openai",
+      "api_version": "chat_completions",
+      "enabled": true,
+      "fallback": false,
+      "inject_thinking_history": true,
+      "routes": [
+        {
+          "id": "r1",
+          "pattern": "claude-3-7-*",
+          "target": "deepseek-reasoner",
+          "enabled": true
+        }
+      ],
+      "model_map": {
+        "claude-3-5-sonnet": "deepseek-chat"
+      }
+    },
+    "anthropic-fallback": {
+      "base_url": "https://api.anthropic.com",
+      "api_key": "$ANTHROPIC_API_KEY",
+      "api_format": "anthropic",
+      "enabled": true,
+      "fallback": true
+    }
+  },
+  "lanes": {
+    "enabled": true,
+    "proxy_base": "http://lane-egress",
+    "ports": [8001, 8002, 8003, 8004],
+    "ctl_url": "http://lane-egress:9100",
+    "token": "$LANE_TOKEN"
+  }
+}

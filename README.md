@@ -182,6 +182,43 @@ Tests cover:
 
 ---
 
+## Deployment & CI/CD Pipelines
+
+The repository provides dual-environment deployments (**Dev** and **Prod**) that connect directly to your existing, live `lane-egress` container without modifying, restarting, or duplicating it.
+
+```
+                   ┌────────────────────────────────────────────────────────────┐
+                   │                   Dokploy Network                          │
+                   │                 (dokploy-network)                          │
+                   │                                                            │
+[ Git: dev ]  ──►  │  [ ccs-dev:7896 ] (host: 7897) ──┐                          │
+                   │                                  │                         │
+                   │                                  ├──► http://lane-egress:8001..8004
+[ Git: prod ] ──►  │  [ ccs-prod:7896 ] (host: 7896) ─┼──► http://lane-egress:9100
+                   │                                  │    (Unmodified Live     │
+                   │                                  │     Lane Container)     │
+                   └──────────────────────────────────┴─────────────────────────┘
+```
+
+### 1. Dev Deployment (`docker-compose.dev.yml`)
+- **Trigger**: Automatic on push to `dev` branch via `.github/workflows/deploy-dev.yml`.
+- **Port**: Internal `7896`, mapped to host `${CCS_DEV_PORT:-7897}`.
+- **Network**: Attaches to `dokploy-network` (external: true).
+- **Egress Lanes**: Connects to existing `http://lane-egress:8001..8004` and `http://lane-egress:9100`.
+
+### 2. Prod Deployment (`docker-compose.prod.yml`)
+- **Trigger**: Automatic on push to `prod` branch (or `v*` release tags) via `.github/workflows/deploy-prod.yml`.
+- **Port**: Internal `7896`, mapped to host `${CCS_PROD_PORT:-7896}`.
+- **Network**: Attaches to `dokploy-network` (external: true).
+- **Egress Lanes**: Shares the exact same live `http://lane-egress:8001..8004` container with dev.
+
+### 3. GitHub Secrets for Automated Dokploy Deployment
+- `DOKPLOY_DEV_WEBHOOK_URL`: Dokploy deploy webhook URL for the dev compose service.
+- `DOKPLOY_PROD_WEBHOOK_URL`: Dokploy deploy webhook URL for the prod compose service.
+- `DEV_GATEWAY_URL`: URL for healthcheck verification (default: `https://ccs-dev.shrijit.tech`).
+- `PROD_GATEWAY_URL`: URL for healthcheck verification (default: `https://ccs.shrijit.tech`).
+
+---
 ## License
 
 MIT

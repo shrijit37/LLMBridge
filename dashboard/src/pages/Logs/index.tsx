@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { FileTextIcon } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Select,
@@ -18,7 +19,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { TabularText } from "@/components/ui/TabularText";
+import { DataTable, TableHead } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/common/PageHeader";
+import { EmptyState } from "@/components/common/EmptyState";
 import { Events, request, subscribe } from "@/services/request";
 import { useProviders } from "@/hooks/useProviders";
 import type { RequestLogRecord } from "@/hooks/types";
@@ -28,7 +31,7 @@ import { formatDuration, formatTokenK } from "@/lib/format";
 const LIMITS = [50, 200, 500];
 
 function statusVariant(status: number): "success" | "info" | "danger" | "warning" | "muted" {
-  if (status === 0) return "danger"; // transport error
+  if (status === 0) return "danger";
   if (status >= 200 && status < 300) return "success";
   if (status >= 400 && status < 500) return "warning";
   if (status >= 500) return "danger";
@@ -103,39 +106,38 @@ export function Logs() {
             ))}
           </SelectContent>
         </Select>
+
+        <div className="ml-auto flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-xs text-ink-mute">
+            <StatusDot status="success" pulse />
+            streaming
+          </span>
+          <Badge variant="muted">
+            <TabularText>{items.length}</TabularText>
+          </Badge>
+        </div>
       </div>
 
       <Card>
-        <CardContent className="flex flex-col gap-3 px-5 py-4">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-medium text-ink-primary">Request Logs</h3>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-mute">
-                <StatusDot status="success" pulse />
-                streaming
-              </span>
-              <Badge variant="muted">
-                <TabularText>{items.length}</TabularText>
-              </Badge>
-            </div>
-          </div>
-
+        <CardContent className="px-5 py-4">
           {items.length === 0 ? (
-            <p className="py-8 text-center text-sm text-ink-mute">
-              No requests yet — send traffic through the gateway and it appears here live.
-            </p>
+            <EmptyState
+              icon={FileTextIcon}
+              heading="No requests yet"
+              description="Send traffic through the gateway and it appears here live."
+            />
           ) : (
-            <div className="overflow-x-auto">
+            <DataTable>
               <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-edge text-left text-xs text-ink-mute">
-                    <th className="px-2 pb-2 font-medium">Status</th>
-                    <th className="px-2 pb-2 font-medium">Timestamp</th>
-                    <th className="px-2 pb-2 font-medium">Model</th>
-                    <th className="px-2 pb-2 font-medium">Provider</th>
-                    <th className="px-2 pb-2 text-right font-medium">Latency</th>
-                    <th className="px-2 pb-2 text-right font-medium">Tokens</th>
-                    <th className="px-2 pb-2 font-medium">Error</th>
+                  <tr className="border-b border-edge text-left">
+                    <TableHead>Status</TableHead>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Model</TableHead>
+                    <TableHead>Provider</TableHead>
+                    <TableHead align="right">Latency</TableHead>
+                    <TableHead align="right">Tokens</TableHead>
+                    <TableHead>Error</TableHead>
                   </tr>
                 </thead>
                 <tbody>
@@ -143,9 +145,9 @@ export function Logs() {
                     <tr
                       key={log.id ?? `${log.timestamp_ms}-${idx}`}
                       onClick={() => setSelected(log)}
-                      className="cursor-pointer border-b border-edge-subtle last:border-0 hover:bg-surface-hover"
+                      className="cursor-pointer border-b border-edge-subtle last:border-0 transition-colors hover:bg-surface-hover"
                     >
-                      <td className="px-2 py-2">
+                      <td className="px-3 py-2.5">
                         <Badge variant={statusVariant(log.status)}>
                           <TabularText>{statusLabel(log.status)}</TabularText>
                         </Badge>
@@ -153,27 +155,27 @@ export function Logs() {
                           <span className="ml-1.5 text-[10px] text-ink-mute">stream</span>
                         ) : null}
                       </td>
-                      <td className="px-2 py-2 text-xs text-ink-mute">
+                      <td className="px-3 py-2.5 text-xs text-ink-mute">
                         <TabularText>{fmtTime(log.timestamp_ms)}</TabularText>
                       </td>
                       <td
                         className={cn(
-                          "px-2 py-2 font-mono text-xs",
+                          "px-3 py-2.5 font-mono text-xs",
                           log.model ? "text-ink-primary" : "text-ink-mute",
                         )}
                       >
                         {log.model || "—"}
                       </td>
-                      <td className="px-2 py-2 text-ink-secondary">{log.provider_name}</td>
-                      <td className="px-2 py-2 text-right">
+                      <td className="px-3 py-2.5 text-ink-secondary">{log.provider_name}</td>
+                      <td className="px-3 py-2.5 text-right">
                         <TabularText className="text-xs">{formatDuration(log.latency_ms)}</TabularText>
                       </td>
-                      <td className="px-2 py-2 text-right">
+                      <td className="px-3 py-2.5 text-right">
                         <TabularText className="text-xs">
                           {formatTokenK(log.input_tokens + log.output_tokens)}
                         </TabularText>
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="px-3 py-2.5">
                         {log.status >= 400 && log.error ? (
                           <span className="block max-w-[200px] truncate text-xs text-destructive">
                             {log.error}
@@ -184,7 +186,7 @@ export function Logs() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </DataTable>
           )}
         </CardContent>
       </Card>

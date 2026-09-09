@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { CopyIcon } from "lucide-react";
 
 import { ButtonToggle, StatusPill, ThemeToggle } from "./TopBar";
@@ -58,9 +59,19 @@ export function AppLayout() {
       <div className="flex flex-1 overflow-hidden">
         <SideNav />
         <main className="flex-1 min-w-0 overflow-y-auto">
-          <Suspense fallback={null}>
-            <ActivePage />
-          </Suspense>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeView}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+            >
+              <Suspense fallback={null}>
+                <ActivePage />
+              </Suspense>
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
     </div>

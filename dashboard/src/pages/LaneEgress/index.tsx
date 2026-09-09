@@ -1,13 +1,26 @@
-import { useMemo } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCcw } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { Badge, Button, Card, CardContent, StatusDot, Switch, TabularText } from "@/components/ui";
 import { useLanes } from "@/hooks/useLanes";
 import { controlApi } from "@/services/control";
+import { request } from "@/services/request";
 import { cn } from "@/lib/utils";
+import { LanesEditDialog, type LanesFormData } from "./LanesEditDialog";
+
+type LaneConfigData = {
+  enabled: boolean;
+  proxy_base: string;
+  ctl_url: string;
+  token: string;
+  ports: number[];
+  endpoint_name?: string | null;
+  max_rotations_per_window?: number | null;
+  window_secs?: number | null;
+};
 
 type LaneRec = { key: string; port: number; status: string };
 
@@ -78,6 +91,14 @@ export function LaneEgress() {
   const enabled = !!data?.enabled;
   const qc = useQueryClient();
 
+  const { data: laneConfig } = useQuery<{ data: LaneConfigData | null }>({
+    queryKey: ["lanes", "config"],
+    queryFn: () => request<{ data: LaneConfigData | null }>("/api/lanes/config"),
+    refetchOnWindowFocus: false,
+  });
+
+  const [editOpen, setEditOpen] = useState(false);
+
   const toggleMut = useMutation({
     mutationFn: () => controlApi.toggleLanes(),
     onSuccess: (r) => {
@@ -121,12 +142,36 @@ export function LaneEgress() {
     return [];
   }, [status]);
 
+  const editInitial = useMemo<LanesFormData | null>(() => {
+    const cfg = laneConfig?.data;
+    if (!cfg) return null;
+    return {
+      proxy_base: cfg.proxy_base,
+      ctl_url: cfg.ctl_url,
+      token: cfg.token,
+      ports: cfg.ports.map(String).join(", "),
+      endpoint_name: cfg.endpoint_name ?? "",
+      max_rotations_per_window: cfg.max_rotations_per_window != null ? String(cfg.max_rotations_per_window) : "",
+      window_secs: cfg.window_secs != null ? String(cfg.window_secs) : "",
+    };
+  }, [laneConfig]);
+
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <PageHeader
         eyebrow="Networking"
         title="Lane Egress"
         description="Egress VPN lane relay health — opaque lane-ctl status rendered as-is."
+        actions={
+          <Button
+            variant="outline"
+            onClick={() => setEditOpen(true)}
+            disabled={!editInitial}
+          >
+            <Pencil />
+            Edit config
+          </Button>
+        }
       />
 
       <Card>
@@ -232,6 +277,15 @@ export function LaneEgress() {
           )}
         </CardContent>
       </Card>
+
+      {editInitial ? (
+        <LanesEditDialog
+          key={JSON.stringify(editInitial)}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          initial={editInitial}
+        />
+      ) : null}
     </div>
   );
 }
