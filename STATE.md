@@ -106,24 +106,29 @@ booted with zero providers is not meaningfully healthy.
 - Previously deployed as `ccs` via `docker-compose.dokploy.yml`, a **compose
   stack that built on the production server**. That is the exact thing the
   standard forbids, and it is why `ccs.shrijit.tech` and `ccs-dev.shrijit.tech`
-  return 404 today: the compose was torn down or died and only DNS remains.
+  returned 404: only DNS remained, with no backend behind it.
 - Three overlapping workflows (`ci.yml`, `deploy-dev.yml`, `deploy-prod.yml`)
   with different triggers and no shared contract. Collapsed into one
   `deploy.yml` that calls `make *`.
 
+## Cleanup completed 2026-10-09
+
+- Deleted all four `docker-compose*.yml` files after the GHCR path was
+  verified live, so no compose deploy can silently rebuild on the prod server
+  again.
+- Deleted the stale `ccs.shrijit.tech` and `ccs-dev.shrijit.tech` DNS records,
+  which only pointed at a 404.
+- `.gitignore` had `.env.*` swallowing the required `.env.example`; added a
+  negation.
+
 ## Hygiene problems
 
-- **No `/ready` endpoint.** The standard wants one for DB-backed services.
-  Cheap to add given SQLite is already a single file.
-- **No `STATE.md` before this one**, and the old README described Dokploy
-  compose deployment.
-- `ccs.shrijit.tech` and `ccs-dev.shrijit.tech` DNS records are stale
-  (404, no backend). Candidates for deletion once the new hostname is verified.
+- No Gitleaks / Dependabot config committed yet (Trivy runs in CI).
+- No external uptime monitor on the hostname.
+- Provider API keys are still managed outside Infisical; the Dokploy app has
+  no secrets provider assigned yet, so `config.prod.json` on the volume is the
+  effective source of provider keys. That is a real deviation from the
+  standard and is the next thing to fix.
 - Lint is `tsc --noEmit` only; no eslint/oxlint config in the repo.
-- `docker-compose*.yml` (4 variants) predate this migration and are now
-  redundant with the GHCR pipeline. Should be deleted once the new path is
-  verified, since keeping them invites a future accidental compose deploy on
-  the prod server.
-- No Gitleaks / Dependabot / container-scan config committed yet (Trivy runs in
-  CI).
+- No Gitleaks / Dependabot config committed yet (Trivy runs in CI).
 - No external uptime monitor on the hostname.

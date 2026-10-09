@@ -216,18 +216,17 @@ Provider API keys are runtime config and are **not** stored in GitHub. They are
 resolved from Infisical through Dokploy's secrets provider. `GITHUB_TOKEN` is
 used implicitly for the GHCR push.
 
-### Legacy compose stacks
+### Legacy compose stacks (removed)
 
-This repo previously shipped `docker-compose.dokploy.yml`,
-`docker-compose.dev.yml`, `docker-compose.prod.yml` and `docker-compose.yml`,
-deployed by webhooks that **built the image on the production server**. Those
-files are retained only until the GHCR pipeline is verified live, then
-deleted: leaving four compose variants around is exactly how a future
-accidental on-server build happens.
+This repo previously shipped four `docker-compose*.yml` variants deployed by
+webhooks that **built the image on the production server**. They were deleted
+on 2026-10-09 once the GHCR pipeline was verified live, along with the stale
+`ccs.shrijit.tech` and `ccs-dev.shrijit.tech` DNS records that pointed at a
+404. Four compose variants sitting next to a working image pipeline is exactly
+how a future accidental on-server build happens.
 
-The old hostnames `ccs.shrijit.tech` and `ccs-dev.shrijit.tech` still resolve in
-DNS but return 404 because no Dokploy domain is attached to them. They should
-be removed once `api.llmbridge.shrijit.tech` is confirmed live.
+The `container/lane-egress/` directory is unrelated and still present: it is a
+separate sidecar image, not a way to deploy the gateway.
 
 ### Rollback
 
