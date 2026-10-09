@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Install dependencies from the committed lockfile.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+pnpm install --frozen-lockfile
+
+# The dashboard is a separate npm project baked into the gateway image.
+# Install its deps too, otherwise `scripts/build` fails late.
+if [ -f dashboard/package-lock.json ]; then
+  (cd dashboard && npm ci)
+fi

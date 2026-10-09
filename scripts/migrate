@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# No database migrations.
+#
+# LLMBridge stores request stats and logs in SQLite via node:sqlite, and the
+# schema is created by `PRAGMA`/DDL inside src/storage/db.ts on first boot. That
+# makes it self-initialising and idempotent, so there is nothing to run from
+# CI.
+#
+# The database lives on a Docker volume, not on shared PostgreSQL: it is
+# high-churn observability data (per-request stats, ring-buffer logs), not
+# authoritative user records. Moving it to shared Postgres would add a network
+# hop on the hot path for no benefit and lose the single-writer simplicity.
+#
+# Consequence for the platform rule "stateful apps must have migrations":
+# this app is exempt, and the exemption is deliberate rather than an
+# oversight. If it ever grows durable user data, it moves to shared Postgres
+# and gets real migrations.
+set -euo pipefail
+echo "migrate: no-op (SQLite schema is created idempotently on boot)"

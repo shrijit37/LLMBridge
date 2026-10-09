@@ -1,0 +1,13 @@
+name: llmbridge
+type: api
+runtime: node
+deploy:
+  target: dokploy
+  domain: api.llmbridge.shrijit.tech
+service:
+  port: 7896
+  healthcheck: /health
+notes: >-
+  API class: single container (gateway + baked dashboard SPA on one port).
+  SQLite on a Docker volume for request stats, not shared PostgreSQL.
+  No migrations: the schema is created idempotently on boot.

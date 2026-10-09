@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Local dev server: gateway on :7896, dashboard dev server on :5174.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+CCS_CONFIG_DIR="${CCS_CONFIG_DIR:-$PWD/data/config}"
+export CCS_CONFIG_DIR
+mkdir -p "$CCS_CONFIG_DIR"
+
+# Seed a local config from the dev template if none exists, mirroring the
+# container entrypoint so local behaviour matches the deployed image.
+if [ ! -f "$CCS_CONFIG_DIR/config.json" ]; then
+  cp "config/config.dev.json" "$CCS_CONFIG_DIR/config.json"
+fi
+
+pnpm build
+exec pnpm start

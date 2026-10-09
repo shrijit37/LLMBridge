@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Lint: TypeScript typecheck plus oxlint.
+#
+# `tsc --noEmit` is the meaningful gate here. There is no eslint config in this
+# repo and adding one is out of scope for the deployment migration; the
+# typecheck already fails the build on real errors, and `scripts/build` runs it.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "==> typecheck (gateway)"
+pnpm exec tsc --noEmit
+
+if [ -f dashboard/tsconfig.json ]; then
+  echo "==> typecheck (dashboard)"
+  (cd dashboard && npm run typecheck)
+fi

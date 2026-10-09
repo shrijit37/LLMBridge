@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Full test suite. Vitest run mode exits; `vitest` alone would watch forever.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+pnpm test

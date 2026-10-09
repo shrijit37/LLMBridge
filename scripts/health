@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Health check for the CI promotion gate.
+#
+# /health is a liveness endpoint and returns 200 as soon as the process is up.
+# It reports provider configuration too, so assert on `status: ok` rather than
+# just the HTTP code: a gateway that booted with no providers is not healthy in
+# any useful sense.
+set -euo pipefail
+: "${APP_URL:?APP_URL is required}"
+
+body=$(curl -fsS --max-time 20 "$APP_URL/health")
+
+case "$body" in
+  *'"status":"ok"'*) ;;
+  *)
+    echo "FAIL: $APP_URL/health did not report status ok"
+    echo "$body"
+    exit 1
+    ;;
+esac
+
+echo "healthy: $APP_URL/health -> $body"
+
+# Readiness gate. /ready returns 503 while the gateway is up but has no
+# usable provider set or cannot read its store, so a bare HTTP check would
+# pass a container that cannot actually serve traffic.
+ready_body=$(curl -fsS --max-time 20 "$APP_URL/ready" || true)
+
+case "$ready_body" in
+  *'"status":"ready"'*)
+    echo "ready: $APP_URL/ready -> $ready_body"
+    ;;
+  *)
+    echo "FAIL: $APP_URL/ready did not report status ready"
+    echo "${ready_body:-<no response>}"
+    exit 1
+    ;;
+esac

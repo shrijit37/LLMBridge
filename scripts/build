@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Production build: gateway TypeScript + dashboard SPA.
+#
+# This compiles both halves into dist/ and dashboard/dist so `docker build`
+# has something to COPY. CI additionally builds the real container image.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "==> build gateway"
+pnpm build
+
+if [ -f dashboard/package.json ]; then
+  echo "==> build dashboard"
+  (cd dashboard && npm run build)
+fi

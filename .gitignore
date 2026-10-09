@@ -7,4 +7,7 @@ dist/
 *.log
 .env
 .env.*
+# .env.example documents names only and carries no secrets, so it is tracked.
+# Without this the standard's required .env.example would be silently ignored.
+!.env.example
 .DS_Store

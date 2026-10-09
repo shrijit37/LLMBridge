@@ -178,6 +178,72 @@ describe('Storage & Server', () => {
       db.close();
     });
 
+    it('/ready reports ready when a provider is selected and the store is readable', async () => {
+      const config = createDefaultConfig();
+      config.current = 'openai-main';
+      config.providers['openai-main'] = {
+        ...createDefaultProvider('p-openai'),
+        baseUrl: 'https://api.openai.com',
+        enabled: true,
+      };
+      saveConfig(config, configPath);
+
+      const configWatcher = new ConfigWatcher({ configPath });
+      configWatcher.start();
+
+      const db = new GatewayDatabase(':memory:');
+      const app = createGatewayApp({
+        configWatcher,
+        db,
+        ringBuffer: new RingBuffer<Record<string, unknown>>(10),
+        circuitBreaker: new CircuitBreaker(),
+      });
+
+      const res = await app.request('/ready');
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as Record<string, unknown>;
+      expect(json['status']).toBe('ready');
+      expect(json['database']).toBe('up');
+      expect(json['active_provider']).toBe('openai-main');
+      // A ready gateway reports no reasons; the field is only for failures.
+      expect(json['reasons']).toBeUndefined();
+
+      configWatcher.stop();
+      db.close();
+    });
+
+    it('/ready returns 503 with reasons when no provider is selected', async () => {
+      const config = createDefaultConfig();
+      // No providers and no current provider: the process is alive but cannot
+      // route a single request. This is exactly the state the deploy gate
+      // must refuse to promote.
+      config.providers = {};
+      config.current = '';
+      saveConfig(config, configPath);
+
+      const configWatcher = new ConfigWatcher({ configPath });
+      configWatcher.start();
+
+      const db = new GatewayDatabase(':memory:');
+      const app = createGatewayApp({
+        configWatcher,
+        db,
+        ringBuffer: new RingBuffer<Record<string, unknown>>(10),
+        circuitBreaker: new CircuitBreaker(),
+      });
+
+      const res = await app.request('/ready');
+      expect(res.status).toBe(503);
+      const json = (await res.json()) as Record<string, unknown>;
+      expect(json['status']).toBe('not_ready');
+      const reasons = json['reasons'] as string[];
+      expect(reasons).toContain('no providers configured');
+      expect(reasons).toContain('no active provider selected');
+
+      configWatcher.stop();
+      db.close();
+    });
+
     it('spawns and stops pinned port listeners via PinnedListenerManager', async () => {
       const config = createDefaultConfig();
       config.providers['pinned-test'] = {

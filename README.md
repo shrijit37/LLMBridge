@@ -37,22 +37,42 @@ CCS normalizes LLM client requests and upstreams across Anthropic, OpenAI Chat, 
 ## Installation & Quickstart
 
 ```bash
-# Clone and install dependencies
-git clone <repository_url> ccs-ts
-cd ccs-ts
-pnpm install
+git clone https://github.com/shrijit37/LLMBridge.git
+cd LLMBridge
 
-# Build TypeScript to dist/
-pnpm build
-
-# Run unit and integration tests (65 tests)
-pnpm test
-
-# Start the gateway daemon
-pnpm start
+make setup     # install gateway + dashboard deps from lockfiles
+make test      # 86 unit + integration tests
+make lint      # tsc --noEmit for gateway and dashboard
+make build     # compile gateway dist/ and dashboard/dist/
+make dev       # run the gateway locally on :7896
 ```
 
+`make` targets wrap `scripts/*`, and that is the contract CI uses too — CI
+never calls a framework command directly.
+
 By default, the daemon listens on `127.0.0.1:7896` (configurable via `config.json`).
+
+## Deployment
+
+`API` class, one container, deployed to Dokploy. **Builds happen only in GitHub
+Actions**; Dokploy pulls the published image and never builds.
+
+```text
+push to dev → test → lint → build → push GHCR:<sha> (amd64+arm64)
+            → Trivy scan → saveDockerProvider → redeploy → health gate
+```
+
+Live: <https://api.llmbridge.shrijit.tech> (`/health`, `/ready`)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | liveness; 200 as soon as the process is up |
+| `GET /ready` | readiness; 503 until a provider set exists and the store is readable |
+
+No migrations: the SQLite schema is created idempotently on boot, so
+`make migrate` is an explicit no-op. The database holds per-request stats, not
+authoritative user records, so it stays on a Docker volume rather than shared
+PostgreSQL. See [STATE.md](./STATE.md) for the full rationale.
 
 ---
 
@@ -182,41 +202,37 @@ Tests cover:
 
 ---
 
-## Deployment & CI/CD Pipelines
+## GitHub config for the deploy pipeline
 
-The repository provides dual-environment deployments (**Dev** and **Prod**) that connect directly to your existing, live `lane-egress` container without modifying, restarting, or duplicating it.
+| Name | Type | Purpose |
+|---|---|---|
+| `DOKPLOY_API_KEY` | secret | triggers the redeploy via the Dokploy API |
+| `IMAGE_NAME` | variable | lowercase image name (`llmbridge`) |
+| `DOKPLOY_APPLICATION_ID` | variable | Dokploy app id |
+| `DOKPLOY_URL` | variable | Dokploy control plane |
+| `APP_URL` | variable | public hostname, used by the health gate |
 
-```
-                   ┌────────────────────────────────────────────────────────────┐
-                   │                   Dokploy Network                          │
-                   │                 (dokploy-network)                          │
-                   │                                                            │
-[ Git: dev ]  ──►  │  [ ccs-dev:7896 ] (host: 7897) ──┐                          │
-                   │                                  │                         │
-                   │                                  ├──► http://lane-egress:8001..8004
-[ Git: prod ] ──►  │  [ ccs-prod:7896 ] (host: 7896) ─┼──► http://lane-egress:9100
-                   │                                  │    (Unmodified Live     │
-                   │                                  │     Lane Container)     │
-                   └──────────────────────────────────┴─────────────────────────┘
-```
+Provider API keys are runtime config and are **not** stored in GitHub. They are
+resolved from Infisical through Dokploy's secrets provider. `GITHUB_TOKEN` is
+used implicitly for the GHCR push.
 
-### 1. Dev Deployment (`docker-compose.dev.yml`)
-- **Trigger**: Automatic on push to `dev` branch via `.github/workflows/deploy-dev.yml`.
-- **Port**: Internal `7896`, mapped to host `${CCS_DEV_PORT:-7897}`.
-- **Network**: Attaches to `dokploy-network` (external: true).
-- **Egress Lanes**: Connects to existing `http://lane-egress:8001..8004` and `http://lane-egress:9100`.
+### Legacy compose stacks
 
-### 2. Prod Deployment (`docker-compose.prod.yml`)
-- **Trigger**: Automatic on push to `prod` branch (or `v*` release tags) via `.github/workflows/deploy-prod.yml`.
-- **Port**: Internal `7896`, mapped to host `${CCS_PROD_PORT:-7896}`.
-- **Network**: Attaches to `dokploy-network` (external: true).
-- **Egress Lanes**: Shares the exact same live `http://lane-egress:8001..8004` container with dev.
+This repo previously shipped `docker-compose.dokploy.yml`,
+`docker-compose.dev.yml`, `docker-compose.prod.yml` and `docker-compose.yml`,
+deployed by webhooks that **built the image on the production server**. Those
+files are retained only until the GHCR pipeline is verified live, then
+deleted: leaving four compose variants around is exactly how a future
+accidental on-server build happens.
 
-### 3. GitHub Secrets for Automated Dokploy Deployment
-- `DOKPLOY_DEV_WEBHOOK_URL`: Dokploy deploy webhook URL for the dev compose service.
-- `DOKPLOY_PROD_WEBHOOK_URL`: Dokploy deploy webhook URL for the prod compose service.
-- `DEV_GATEWAY_URL`: URL for healthcheck verification (default: `https://ccs-dev.shrijit.tech`).
-- `PROD_GATEWAY_URL`: URL for healthcheck verification (default: `https://ccs.shrijit.tech`).
+The old hostnames `ccs.shrijit.tech` and `ccs-dev.shrijit.tech` still resolve in
+DNS but return 404 because no Dokploy domain is attached to them. They should
+be removed once `api.llmbridge.shrijit.tech` is confirmed live.
+
+### Rollback
+
+Redeploy the previous SHA image; never rebuild. `scripts/health` will fail
+fast if the previous image is not actually serving.
 
 ---
 ## License

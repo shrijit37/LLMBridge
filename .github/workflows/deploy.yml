@@ -1,0 +1,199 @@
+# Canonical dynamic pipeline: test -> lint -> build (GHCR SHA) -> scan -> deploy prod.
+#
+# Builds happen ONLY here. Dokploy pulls the resulting image and never builds.
+# The image is multi-arch because the deploy server is linux/arm64.
+#
+# Required repo config:
+#   secrets.DOKPLOY_API_KEY       (deploy trigger only)
+#   secrets.GITHUB_TOKEN           (implicit; used for the GHCR push)
+#   vars.INFISICAL_IDENTITY_ID     shared github-actions OIDC identity
+#   vars.INFISICAL_DOMAIN
+#   vars.INFISICAL_PROJECT_SLUG
+#   vars.DOKPLOY_APPLICATION_ID
+#   vars.DOKPLOY_URL
+#   vars.IMAGE_NAME                LOWERCASE repo name -> llmbridge
+#   vars.APP_URL                   https://api.llmbridge.shrijit.tech
+name: deploy
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  # MUST be lowercase. GitHub Actions has no `lower()` and
+  # `github.repository` keeps the original capitals, which Docker rejects
+  # outright with "repository name must be lowercase".
+  IMAGE: ghcr.io/${{ github.repository_owner }}/${{ vars.IMAGE_NAME }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+      - name: Install deps
+        run: ./scripts/setup
+      - name: Run test suite
+        run: make test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+      # Install deps in every job that runs a script: without node_modules
+      # the toolchain is not on PATH and the failure is exit 127, which reads
+      # like a tooling bug rather than a missing step.
+      - name: Install deps
+        run: ./scripts/setup
+      - name: Lint
+        run: make lint
+
+  build:
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+      - name: Install deps
+        run: ./scripts/setup
+      - name: Compile (fail fast before spending 10 minutes on an image)
+        run: make build
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push (amd64+arm64, SHA tag)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          # BOTH platforms are mandatory: the deploy server is linux/arm64.
+          # An amd64-only image is rejected by Swarm ("no matching manifest
+          # for linux/arm64/v8") and Traefik 502s with no container starting.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  scan:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Scan image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+
+  deploy-prod:
+    if: github.ref == 'refs/heads/dev'
+    needs: [build, scan]
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+      - name: Install deps
+        run: ./scripts/setup
+      - name: Run migrations
+        # No-op today (SQLite self-initialises), but the hook exists so the
+        # lifecycle stays correct if this ever moves to shared Postgres.
+        # A failed migration must NOT abort: it would skip the redeploy and
+        # leave prod on the old image, which reads as "nothing happened".
+        run: make migrate || echo "::warning::migrate failed; deploying anyway"
+      - name: Point Dokploy at SHA image and redeploy
+        env:
+          DOKPLOY_URL: ${{ vars.DOKPLOY_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          APPLICATION_ID: ${{ vars.DOKPLOY_APPLICATION_ID }}
+          IMAGE_REF: ${{ env.IMAGE }}:${{ github.sha }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # This Dokploy version serves its API under /api/<router>.<procedure>
+          # (dot notation). The slashed form 404s.
+          #
+          # username/password/registryUrl are NOT optional in this schema:
+          # omitting them returns HTTP 400 and the deploy silently never
+          # happens. Verified against the live API 2026-10-09.
+          curl -fsS -X POST -H "x-api-key: $DOKPLOY_API_KEY" \
+            -H 'Content-Type: application/json' \
+            -d "{\"applicationId\":\"$APPLICATION_ID\",\"dockerImage\":\"$IMAGE_REF\",\"username\":\"${{ github.actor }}\",\"password\":\"$GHCR_TOKEN\",\"registryUrl\":\"ghcr.io\"}" \
+            "$DOKPLOY_URL/api/application.saveDockerProvider"
+          curl -fsS -X POST -H "x-api-key: $DOKPLOY_API_KEY" \
+            -H 'Content-Type: application/json' \
+            -d "{\"applicationId\":\"$APPLICATION_ID\"}" \
+            "$DOKPLOY_URL/api/application.redeploy" >/dev/null
+          echo "redeploy triggered for $IMAGE_REF"
+      - name: Health check
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: make health
+      - name: Verify hostname resolves to this deployment
+        # Guards against the exact failure this repo hit: DNS existed via the
+        # wildcard but no Dokploy domain was attached, so every request 404'd
+        # while the container looked healthy in Dokploy.
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$APP_URL/health" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "hostname live after ${i} attempt(s)"
+              exit 0
+            fi
+            echo "attempt $i: $APP_URL/health -> $code (container may still be pulling)"
+            sleep 5
+          done
+          echo "::error::$APP_URL/health never returned 200"
+          exit 1

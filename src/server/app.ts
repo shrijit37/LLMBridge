@@ -121,7 +121,8 @@ export function createGatewayApp(ctx: AppContext): Hono {
     })
   );
 
-  // Health check
+  // Health check (liveness). Process is up. Deliberately does not touch the
+  // database or provider state, so a slow disk cannot make this fail.
   app.get('/health', (c) => {
     const config = ctx.configWatcher.config;
     return c.json({
@@ -131,6 +132,40 @@ export function createGatewayApp(ctx: AppContext): Hono {
       version: '0.1.0',
       uptime: Math.floor(process.uptime()),
     });
+  });
+
+  // Readiness. 503 when the gateway is up but not yet able to serve traffic:
+  // no providers configured, no active provider selected, or the SQLite
+  // store is unreadable. Used by the deploy promotion gate and by any
+  // external uptime check.
+  app.get('/ready', (c) => {
+    const config = ctx.configWatcher.config;
+    const providers = Object.keys(config.providers ?? {});
+
+    let database = 'up';
+    try {
+      // Cheapest real query: force the connection open and read a row.
+      ctx.db.getProviderStats();
+    } catch (err) {
+      database = `down: ${err instanceof Error ? err.message : String(err)}`;
+    }
+
+    const reasons: string[] = [];
+    if (providers.length === 0) reasons.push('no providers configured');
+    if (!config.current) reasons.push('no active provider selected');
+    if (database !== 'up') reasons.push(`database ${database}`);
+
+    return c.json(
+      {
+        status: reasons.length === 0 ? 'ready' : 'not_ready',
+        database,
+        active_provider: config.current,
+        providers_count: providers.length,
+        uptime: Math.floor(process.uptime()),
+        ...(reasons.length > 0 ? { reasons } : {}),
+      },
+      reasons.length === 0 ? 200 : 503,
+    );
   });
 
   // Aggregated Stats
