@@ -3,17 +3,25 @@
 Truthful current state. This file wins over any other doc in this repo when
 they disagree. Last verified **2026-10-09**.
 
-## Live endpoints (probed)
+## Live endpoints (probed 2026-10-09 after deploy)
 
 | What | URL | Status |
 |---|---|---|
-| Gateway health | https://api.llmbridge.shrijit.tech/health | see below |
+| Liveness | https://api.llmbridge.shrijit.tech/health | 200 `{"status":"ok","active_provider":"deepseek-dev","providers_count":1}` |
+| Readiness | https://api.llmbridge.shrijit.tech/ready | 200 `{"status":"ready","database":"up"}` |
+| Dashboard SPA | https://api.llmbridge.shrijit.tech/dashboard | 200 |
+| Stats API | https://api.llmbridge.shrijit.tech/stats | 200 |
 | Legacy host | https://ccs.shrijit.tech/health | **404** — stale DNS, no Dokploy route |
 | Legacy dev host | https://ccs-dev.shrijit.tech/health | **404** — same |
 
-The `api.llmbridge.*` names did not resolve at all before this migration; the
-wildcard A record covers DNS but a Dokploy domain has to be attached for
-Traefik to route it.
+The bare `/` path returns 404 by design: the dashboard is mounted at
+`/dashboard`, not at the root. That is existing behaviour, not a defect.
+
+CI run **37893737393** built and pushed the image, scanned it, and deployed.
+Its health step failed on a 502 because the multi-arch image was still being
+pulled on the ARM64 host; the service was healthy moments later. Fixed by
+adding a retry-and-wait step before the health gate, and by asserting the
+dashboard mount in `scripts/health`.
 
 ## Class
 

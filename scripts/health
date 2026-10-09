@@ -36,3 +36,13 @@ case "$ready_body" in
     exit 1
     ;;
 esac
+
+# The dashboard SPA is baked into the same image at /dashboard. It is a static
+# mount, so it comes up exactly when the gateway does; assert it so a broken
+# image (missing dashboard/dist) cannot pass the gate.
+dash_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$APP_URL/dashboard" || echo 000)
+[ "$dash_code" = "200" ] || {
+  echo "FAIL: $APP_URL/dashboard returned $dash_code (dashboard bundle missing?)"
+  exit 1
+}
+echo "healthy: dashboard SPA served at $APP_URL/dashboard"

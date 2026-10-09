@@ -176,24 +176,27 @@ jobs:
             -d "{\"applicationId\":\"$APPLICATION_ID\"}" \
             "$DOKPLOY_URL/api/application.redeploy" >/dev/null
           echo "redeploy triggered for $IMAGE_REF"
+      - name: Wait for the new container to answer
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        # Swarm tears down the old task and pulls the new multi-arch image
+        # before Traefik can route to it. Probing immediately returns 502 for
+        # ~30-60s and fails a deploy that is genuinely converging, so retry
+        # before gating on real health.
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$APP_URL/health" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "container answering after $i attempt(s)"
+              exit 0
+            fi
+            echo "attempt $i/$((30)): $APP_URL/health -> $code (pulling or booting)"
+            sleep 6
+          done
+          echo "::error::$APP_URL/health never returned 200 after 3 minutes"
+          exit 1
       - name: Health check
         env:
           APP_URL: ${{ vars.APP_URL }}
         run: make health
-      - name: Verify hostname resolves to this deployment
-        # Guards against the exact failure this repo hit: DNS existed via the
-        # wildcard but no Dokploy domain was attached, so every request 404'd
-        # while the container looked healthy in Dokploy.
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 24); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$APP_URL/health" || echo 000)
-            if [ "$code" = "200" ]; then
-              echo "hostname live after ${i} attempt(s)"
-              exit 0
-            fi
-            echo "attempt $i: $APP_URL/health -> $code (container may still be pulling)"
-            sleep 5
-          done
-          echo "::error::$APP_URL/health never returned 200"
-          exit 1
