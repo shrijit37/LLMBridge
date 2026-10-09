@@ -1,6 +1,11 @@
 # Multi-stage production Dockerfile for CCS TypeScript Gateway Daemon
-FROM node:22-alpine AS builder
+# Shared build arg: the CI bakes the git SHA into the runtime image so
+# GET /health can report it as `version` and the deploy gate can tell a
+# new container from a stale one.
+ARG APP_VERSION=unknown
 
+FROM node:22-alpine AS builder
+ARG APP_VERSION
 WORKDIR /app
 
 RUN npm install -g pnpm@10
@@ -22,12 +27,13 @@ RUN cd dashboard && npm run build
 
 # Production Runner Stage
 FROM node:22-alpine AS runner
-
+ARG APP_VERSION
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV CCS_CONFIG_DIR=/app/config
 ENV PORT=7896
+ENV APP_VERSION=${APP_VERSION}
 
 # Install tini for PID 1 signal handling and curl for healthchecks
 RUN apk add --no-cache tini curl
@@ -46,5 +52,8 @@ RUN chmod +x ./docker-entrypoint.sh
 USER node
 
 EXPOSE 7896
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:7896/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["/sbin/tini", "--", "/app/docker-entrypoint.sh"]

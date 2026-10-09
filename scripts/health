@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
-# Health check for the CI promotion gate.
-#
-# /health is a liveness endpoint and returns 200 as soon as the process is up.
-# It reports provider configuration too, so assert on `status: ok` rather than
-# just the HTTP code: a gateway that booted with no providers is not healthy in
-# any useful sense.
+# Uniform fleet health gate: exactly GET /health -> {status,service,version,checks}
+# (standards/platform.md#health). Accepts ok (healthy) or degraded (up but
+# cannot serve traffic: no providers configured). A 503/status down means the
+# store is unreadable and must keep failing the gate.
 set -euo pipefail
 : "${APP_URL:?APP_URL is required}"
 
 body=$(curl -fsS --max-time 20 "$APP_URL/health")
 
 case "$body" in
-  *'"status":"ok"'*) ;;
+  *'"status":"ok"'*|*'"status":"degraded"'*) ;;
   *)
-    echo "FAIL: $APP_URL/health did not report status ok"
+    echo "FAIL: $APP_URL/health did not report status ok or degraded"
     echo "$body"
     exit 1
     ;;
@@ -21,21 +19,20 @@ esac
 
 echo "healthy: $APP_URL/health -> $body"
 
-# Readiness gate. /ready returns 503 while the gateway is up but has no
-# usable provider set or cannot read its store, so a bare HTTP check would
-# pass a container that cannot actually serve traffic.
-ready_body=$(curl -fsS --max-time 20 "$APP_URL/ready" || true)
-
-case "$ready_body" in
-  *'"status":"ready"'*)
-    echo "ready: $APP_URL/ready -> $ready_body"
-    ;;
-  *)
-    echo "FAIL: $APP_URL/ready did not report status ready"
-    echo "${ready_body:-<no response>}"
-    exit 1
-    ;;
-esac
+# Optional deploy-gate pin: when EXPECTED_VERSION is set (CI passes the image's
+# git SHA), the gate only passes once the NEW container answers. Without this,
+# a healthy-but-stale container would pass the gate.
+if [ -n "${EXPECTED_VERSION:-}" ]; then
+  case "$body" in
+    *"\"version\":\"$EXPECTED_VERSION\"") ;;
+    *)
+      echo "FAIL: $APP_URL/health version mismatch (expected $EXPECTED_VERSION)"
+      echo "$body"
+      exit 1
+      ;;
+  esac
+  echo "version: $EXPECTED_VERSION confirmed"
+fi
 
 # The dashboard SPA is baked into the same image at /dashboard. It is a static
 # mount, so it comes up exactly when the gateway does; assert it so a broken

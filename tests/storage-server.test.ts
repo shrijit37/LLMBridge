@@ -151,7 +151,9 @@ describe('Storage & Server', () => {
       expect(healthRes.status).toBe(200);
       const healthJson = (await healthRes.json()) as Record<string, unknown>;
       expect(healthJson['status']).toBe('ok');
-      expect(healthJson['active_provider']).toBe('openai-main');
+      expect(healthJson['service']).toBe('llmbridge-api');
+      expect(healthJson['version']).toBeDefined();
+      expect(healthJson['checks']).toEqual({ database: 'up', providers: 'up' });
 
       // GET /stats
       const statsRes = await app.request('/stats');
@@ -178,7 +180,7 @@ describe('Storage & Server', () => {
       db.close();
     });
 
-    it('/ready reports ready when a provider is selected and the store is readable', async () => {
+    it('/health reports ok when a provider is selected and the store is readable', async () => {
       const config = createDefaultConfig();
       config.current = 'openai-main';
       config.providers['openai-main'] = {
@@ -199,20 +201,18 @@ describe('Storage & Server', () => {
         circuitBreaker: new CircuitBreaker(),
       });
 
-      const res = await app.request('/ready');
+      const res = await app.request('/health');
       expect(res.status).toBe(200);
       const json = (await res.json()) as Record<string, unknown>;
-      expect(json['status']).toBe('ready');
-      expect(json['database']).toBe('up');
-      expect(json['active_provider']).toBe('openai-main');
-      // A ready gateway reports no reasons; the field is only for failures.
-      expect(json['reasons']).toBeUndefined();
+      expect(json['status']).toBe('ok');
+      expect(json['service']).toBe('llmbridge-api');
+      expect(json['checks']).toEqual({ database: 'up', providers: 'up' });
 
       configWatcher.stop();
       db.close();
     });
 
-    it('/ready returns 503 with reasons when no provider is selected', async () => {
+    it('/health returns degraded (200) when no provider is selected', async () => {
       const config = createDefaultConfig();
       // No providers and no current provider: the process is alive but cannot
       // route a single request. This is exactly the state the deploy gate
@@ -232,13 +232,11 @@ describe('Storage & Server', () => {
         circuitBreaker: new CircuitBreaker(),
       });
 
-      const res = await app.request('/ready');
-      expect(res.status).toBe(503);
+      const res = await app.request('/health');
+      expect(res.status).toBe(200);
       const json = (await res.json()) as Record<string, unknown>;
-      expect(json['status']).toBe('not_ready');
-      const reasons = json['reasons'] as string[];
-      expect(reasons).toContain('no providers configured');
-      expect(reasons).toContain('no active provider selected');
+      expect(json['status']).toBe('degraded');
+      expect(json['checks']).toEqual({ database: 'up', providers: 'down' });
 
       configWatcher.stop();
       db.close();

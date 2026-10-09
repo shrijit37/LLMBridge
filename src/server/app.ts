@@ -121,50 +121,36 @@ export function createGatewayApp(ctx: AppContext): Hono {
     })
   );
 
-  // Health check (liveness). Process is up. Deliberately does not touch the
-  // database or provider state, so a slow disk cannot make this fail.
+  // Uniform fleet health contract (standards/platform.md#health):
+  // exactly GET /health -> { status, service, version, checks }.
+  // The SQLite store is the critical dependency (down => 503); having no
+  // providers configured means the gateway is up but cannot serve
+  // traffic (degraded => 200). No /ready alias.
   app.get('/health', (c) => {
-    const config = ctx.configWatcher.config;
-    return c.json({
-      status: 'ok',
-      active_provider: config.current,
-      providers_count: Object.keys(config.providers).length,
-      version: '0.1.0',
-      uptime: Math.floor(process.uptime()),
-    });
-  });
-
-  // Readiness. 503 when the gateway is up but not yet able to serve traffic:
-  // no providers configured, no active provider selected, or the SQLite
-  // store is unreadable. Used by the deploy promotion gate and by any
-  // external uptime check.
-  app.get('/ready', (c) => {
     const config = ctx.configWatcher.config;
     const providers = Object.keys(config.providers ?? {});
 
-    let database = 'up';
+    let database: 'up' | 'down' = 'up';
     try {
       // Cheapest real query: force the connection open and read a row.
       ctx.db.getProviderStats();
-    } catch (err) {
-      database = `down: ${err instanceof Error ? err.message : String(err)}`;
+    } catch {
+      database = 'down';
     }
 
-    const reasons: string[] = [];
-    if (providers.length === 0) reasons.push('no providers configured');
-    if (!config.current) reasons.push('no active provider selected');
-    if (database !== 'up') reasons.push(`database ${database}`);
+    const providersCheck: 'up' | 'down' =
+      providers.length > 0 && config.current ? 'up' : 'down';
+    const status =
+      database === 'down' ? 'down' : providersCheck === 'down' ? 'degraded' : 'ok';
 
     return c.json(
       {
-        status: reasons.length === 0 ? 'ready' : 'not_ready',
-        database,
-        active_provider: config.current,
-        providers_count: providers.length,
-        uptime: Math.floor(process.uptime()),
-        ...(reasons.length > 0 ? { reasons } : {}),
+        status,
+        service: 'llmbridge-api',
+        version: process.env.APP_VERSION || 'unknown',
+        checks: { database, providers: providersCheck },
       },
-      reasons.length === 0 ? 200 : 503,
+      status === 'down' ? 503 : 200,
     );
   });
 
