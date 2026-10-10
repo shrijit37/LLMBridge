@@ -4,7 +4,7 @@
 # new container from a stale one.
 ARG APP_VERSION=unknown
 
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 ARG APP_VERSION
 WORKDIR /app
 
@@ -26,7 +26,7 @@ COPY dashboard ./dashboard
 RUN cd dashboard && npm run build
 
 # Production Runner Stage
-FROM node:22-alpine AS runner
+FROM node:24-alpine AS runner
 ARG APP_VERSION
 WORKDIR /app
 
