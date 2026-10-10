@@ -197,7 +197,7 @@ jobs:
             case "$body" in
               *'"status":"ok"'*|*'"status":"degraded"'*)
                 case "$body" in
-                  *"\"version\":\"$EXPECTED_VERSION\"")
+                  *"\"version\":\"$EXPECTED_VERSION\""*)
                     echo "new container $EXPECTED_VERSION answering after $i attempt(s)"
                     exit 0
                     ;;
