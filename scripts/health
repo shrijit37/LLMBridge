@@ -24,7 +24,7 @@ echo "healthy: $APP_URL/health -> $body"
 # a healthy-but-stale container would pass the gate.
 if [ -n "${EXPECTED_VERSION:-}" ]; then
   case "$body" in
-    *"\"version\":\"$EXPECTED_VERSION\"") ;;
+    *"\"version\":\"$EXPECTED_VERSION\""*) ;;
     *)
       echo "FAIL: $APP_URL/health version mismatch (expected $EXPECTED_VERSION)"
       echo "$body"
